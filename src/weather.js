@@ -106,7 +106,28 @@ export function resolveStation(place) {
   if (!place) return "";
   if (place.station) return String(place.station);
   const name = place.short || String(place.name || "").split(" · ")[0];
-  return CITIES.find(([item]) => item === name)?.[2] || "";
+  return cityStation(name);
+}
+
+function cityStation(name = "") {
+  const key = String(name).trim();
+  const short = key.replace(/[市区县]$/, "");
+  return CITIES.find(([item]) => item === key || item === short)?.[2] || "";
+}
+
+export function parentStation(place, bundle) {
+  const self = resolveStation(place);
+  const parts = [
+    ...String(bundle?.now?.data?.location?.path || "").split(/[,，]/),
+    ...String(place?.name || "").split(/[-·]/),
+  ]
+    .map((item) => item.trim())
+    .filter((item) => item && item !== "中国");
+  for (const part of parts) {
+    const station = cityStation(part);
+    if (station && station !== self) return station;
+  }
+  return "";
 }
 
 function clean(value) {
@@ -156,8 +177,18 @@ function officialAlerts(alarm) {
       if (!text) return null;
       return { text, tone: alertTone(level, title), tip: alertTip(type, title) };
     })
-    .filter(Boolean)
-    .slice(0, 3);
+    .filter(Boolean);
+}
+
+export function mergeAlerts(...lists) {
+  const seen = new Set();
+  const out = [];
+  for (const item of lists.flat()) {
+    if (!item?.text || seen.has(item.text)) continue;
+    seen.add(item.text);
+    out.push(item);
+  }
+  return out.slice(0, 3);
 }
 
 const SEVERE = /雨|雪|雹|雷|台风|沙尘/;
@@ -276,6 +307,14 @@ export async function fetchWeather(place) {
   const bundle = await invoke("cma_get", { kind: "now", q: station });
   const parsed = parseCmaWeather(bundle);
   if (parsed.temp == null) throw new Error("天气获取失败");
+  const parent = parentStation(place, bundle);
+  if (!parent) return parsed;
+  try {
+    const city = await invoke("cma_get", { kind: "now", q: parent });
+    parsed.alerts = mergeAlerts(parsed.alerts, officialAlerts(city?.now?.data?.alarm));
+  } catch {
+    // 保留区县站点自己的预警
+  }
   return parsed;
 }
 

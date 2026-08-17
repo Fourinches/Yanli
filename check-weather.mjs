@@ -1,4 +1,4 @@
-import { formatHierarchy, officialChart, parseCmaWeather, parseTyphoons, searchPlaces, upcomingSevere, weatherFxText, weatherMood } from "./src/weather.js";
+import { formatHierarchy, mergeAlerts, officialChart, parentStation, parseCmaWeather, parseTyphoons, searchPlaces, upcomingSevere, weatherFxText, weatherMood } from "./src/weather.js";
 
 const shanghai = await searchPlaces("上海");
 if (shanghai.length !== 1 || shanghai[0].short !== "上海" || shanghai[0].station !== "58367" || shanghai[0].name !== "上海-中国") {
@@ -43,6 +43,30 @@ const warned = parseCmaWeather({
   },
   weather: { data: { daily: [] } },
 });
+if (
+  parentStation({ name: "朝阳区-北京-中国", station: "54433" }, { now: { data: { location: { path: "中国, 北京, 朝阳" } } } }) !== "54511"
+  || parentStation({ name: "北京-中国", station: "54511" }, { now: { data: { location: { path: "中国, 北京, 北京" } } } })
+) {
+  throw new Error("区县应继承上级城市预警站点");
+}
+
+const inherited = mergeAlerts(
+  [],
+  parseCmaWeather({
+    now: {
+      data: {
+        now: { temperature: 31 },
+        alarm: [{ signaltype: "雷电", signallevel: "蓝色", title: "北京市气象台发布雷电蓝色预警信号" }],
+      },
+    },
+    weather: { data: { daily: [] } },
+  }).alerts,
+);
+if (inherited[0]?.text !== "雷电蓝色预警" || inherited[0]?.tone !== "blue" || inherited[0]?.tip !== "请勿户外活动，关闭门窗") {
+  console.error(inherited);
+  throw new Error("北京市预警应能显示在朝阳区");
+}
+
 if (
   warned.text !== "微风" ||
   warned.alerts[0]?.text !== "大风蓝色预警" ||
