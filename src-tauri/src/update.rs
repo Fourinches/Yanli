@@ -1,11 +1,11 @@
 use serde::Serialize;
-use serde_json::Value;
 use std::fs;
 use std::process::Command;
 use tauri::AppHandle;
 
 const CURRENT: &str = env!("CARGO_PKG_VERSION");
-const RELEASES: &str = "https://api.github.com/repos/Fourinches/Yanli/releases/latest";
+const LATEST_PAGE: &str = "https://github.com/Fourinches/Yanli/releases/latest";
+const RELEASE_ATOM: &str = "https://github.com/Fourinches/Yanli/releases.atom";
 
 #[derive(Serialize)]
 pub struct UpdateInfo {
@@ -52,42 +52,65 @@ fn valid_download(url: &str) -> bool {
     url.starts_with("https://github.com/Fourinches/Yanli/releases/download/")
 }
 
-fn asset_url(data: &Value) -> String {
-    data["assets"]
-        .as_array()
-        .into_iter()
-        .flatten()
-        .find(|item| item["name"].as_str() == Some(asset_name()))
-        .and_then(|item| item["browser_download_url"].as_str())
-        .unwrap_or("")
-        .to_string()
+fn download_url(tag: &str) -> String {
+    format!(
+        "https://github.com/Fourinches/Yanli/releases/download/v{}/{}",
+        tag.trim_start_matches('v'),
+        asset_name()
+    )
+}
+
+fn tag_from_url(url: &str) -> Option<String> {
+    let tag = url.rsplit("/tag/").nth(0)?.trim().trim_start_matches('v');
+    parse_version(tag)?;
+    Some(tag.to_string())
+}
+
+fn tag_from_atom(xml: &str) -> Option<String> {
+    let entry = xml.split("<entry>").nth(1)?;
+    let title = entry.split("<title>").nth(1)?.split("</title>").next()?.trim();
+    let tag = title.trim_start_matches('v');
+    parse_version(tag)?;
+    Some(tag.to_string())
+}
+
+async fn latest_tag() -> Result<String, String> {
+    let ua = format!("YanliCalendar/{CURRENT}");
+    let page = client(15)?
+        .get(LATEST_PAGE)
+        .header("User-Agent", ua.as_str())
+        .send()
+        .await;
+    if let Ok(res) = page {
+        if res.status().is_success() {
+            if let Some(tag) = tag_from_url(res.url().as_str()) {
+                return Ok(tag);
+            }
+        }
+    }
+
+    let atom = client(15)?
+        .get(RELEASE_ATOM)
+        .header("User-Agent", ua)
+        .send()
+        .await
+        .map_err(|_| "暂时无法检查更新".to_string())?;
+    if !atom.status().is_success() {
+        return Err("暂时无法检查更新".into());
+    }
+    let xml = atom.text().await.map_err(|_| "暂时无法检查更新".to_string())?;
+    tag_from_atom(&xml).ok_or_else(|| "暂时无法检查更新".into())
 }
 
 #[tauri::command]
 pub async fn check_update() -> Result<UpdateInfo, String> {
-    let res = client(8)?
-        .get(RELEASES)
-        .header("User-Agent", format!("YanliCalendar/{CURRENT}"))
-        .header("Accept", "application/vnd.github+json")
-        .send()
-        .await
-        .map_err(|e| e.to_string())?;
-    if !res.status().is_success() {
-        return Err("暂时无法检查更新".into());
-    }
-    let data = res.json::<Value>().await.map_err(|e| e.to_string())?;
-    let latest = data["tag_name"]
-        .as_str()
-        .unwrap_or("")
-        .trim_start_matches('v')
-        .to_string();
-    let notes = data["body"].as_str().unwrap_or("").trim().to_string();
-    let url = asset_url(&data);
-    let available = !latest.is_empty() && is_newer(&latest, CURRENT) && valid_download(&url);
+    let latest = latest_tag().await?;
+    let url = download_url(&latest);
+    let available = is_newer(&latest, CURRENT) && valid_download(&url);
     Ok(UpdateInfo {
         current: CURRENT.to_string(),
         latest,
-        notes,
+        notes: String::new(),
         url,
         available,
     })

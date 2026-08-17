@@ -1,6 +1,6 @@
 [package]
 name = "yanli"
-version = "1.2.14"
+version = "1.2.15"
 description = "轻量桌面中国日历"
 authors = ["you"]
 edition = "2021"
