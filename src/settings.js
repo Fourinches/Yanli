@@ -40,6 +40,7 @@ export const DEFAULTS = {
   layer: "normal",
   autostart: true,
   weatherPos: "top",
+  weatherAnim: true,
   weather: null,
   x: null,
   y: null,

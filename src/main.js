@@ -62,6 +62,7 @@ const els = {
   font: document.getElementById("set-font"),
   layer: document.getElementById("set-layer"),
   weatherPos: document.getElementById("set-weather-pos"),
+  weatherAnim: document.getElementById("set-weather-anim"),
   opacity: document.getElementById("set-opacity"),
   opacityVal: document.getElementById("opacity-val"),
   autostart: document.getElementById("set-autostart"),
@@ -114,6 +115,7 @@ function applyAppearance() {
   els.opacity.value = String(s.opacity);
   els.opacityVal.textContent = `${s.opacity}%`;
   els.autostart.checked = Boolean(s.autostart);
+  if (els.weatherAnim) els.weatherAnim.checked = s.weatherAnim !== false;
   els.placeNow.textContent = s.weather?.name || "尚未选择位置";
   syncDragLock();
   refreshCtxLabels();
@@ -433,7 +435,7 @@ function fxNode(className, style = {}) {
 function applyWeatherFx(text) {
   const layer = els.fxLayer;
   if (!layer) return;
-  const mood = text ? weatherMood(text) : "";
+  const mood = state.settings.weatherAnim !== false && text ? weatherMood(text) : "";
   if (layer.dataset.mood === mood) return;
   layer.dataset.mood = mood;
   layer.replaceChildren();
@@ -749,7 +751,7 @@ function bindSettingsForm() {
     if (key === "size") await applyWindowSize();
     if (key === "layer") await applyWindowLayer();
     if (key === "autostart") await applyAutostart();
-    if (key === "size" || key === "weatherPos") await refreshWeather();
+    if (key === "size" || key === "weatherPos" || key === "weatherAnim") await refreshWeather();
   };
 
   els.size.addEventListener("change", () => onChange("size", els.size.value));
@@ -757,6 +759,7 @@ function bindSettingsForm() {
   els.font.addEventListener("change", () => onChange("font", els.font.value));
   els.layer.addEventListener("change", () => onChange("layer", els.layer.value));
   els.weatherPos.addEventListener("change", () => onChange("weatherPos", els.weatherPos.value));
+  els.weatherAnim?.addEventListener("change", () => onChange("weatherAnim", els.weatherAnim.checked));
   els.opacity.addEventListener("input", () => {
     state.settings.opacity = Number(els.opacity.value);
     persist();
