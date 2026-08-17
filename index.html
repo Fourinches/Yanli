@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>砚历</title>
+    <link rel="stylesheet" href="/src/styles.css" />
+  </head>
+  <body data-theme="frost" data-size="m">
+    <div class="shell">
+      <main class="card" id="card">
+        <header class="topbar" id="drag-bar">
+          <div class="brand">
+            <span class="brand-title">砚历</span>
+            <span class="brand-sub" id="ganzhi">干支</span>
+          </div>
+          <nav class="nav" aria-label="日历操作">
+            <button class="icon-btn" id="prev-btn" type="button" aria-label="上个月" title="上个月">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6 9 12l6 6" /></svg>
+            </button>
+            <button class="icon-btn" id="today-btn" type="button" aria-label="回到今天" title="回到今天">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.4" /></svg>
+            </button>
+            <button class="icon-btn" id="next-btn" type="button" aria-label="下个月" title="下个月">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6" /></svg>
+            </button>
+            <button class="icon-btn" id="settings-btn" type="button" aria-label="设置" title="设置">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <circle cx="12" cy="12" r="3" />
+                <path d="M12 3.5v2.2M12 18.3v2.2M4.8 6.4l1.6 1.6M17.6 16l1.6 1.6M3.5 12h2.2M18.3 12h2.2M4.8 17.6l1.6-1.6M17.6 8l1.6-1.6" />
+              </svg>
+            </button>
+            <button class="icon-btn" id="close-btn" type="button" aria-label="隐藏到托盘" title="隐藏到托盘">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 12h12" /></svg>
+            </button>
+          </nav>
+        </header>
+
+        <div class="weather weather-row" id="weather-top" hidden></div>
+        <div class="alert" id="weather-alert" hidden></div>
+
+        <section class="month-block" id="month-drag" aria-live="polite">
+          <h1 class="month-label" id="month-label">8月</h1>
+          <p class="month-sub" id="month-sub">2026</p>
+        </section>
+
+        <div class="weekdays" id="weekdays"></div>
+        <div class="grid" id="grid" role="grid" aria-label="月历"></div>
+
+        <footer class="detail" id="detail"></footer>
+        <div class="weather weather-bottom" id="weather-bottom" hidden></div>
+        <p class="dock" id="dock"></p>
+      </main>
+    </div>
+
+    <div class="ctx" id="ctx-menu" hidden role="menu">
+      <button type="button" data-act="today">回到今天</button>
+      <button type="button" data-act="settings">设置</button>
+      <hr />
+      <button type="button" data-act="desktop" id="ctx-desktop">贴在壁纸上</button>
+      <button type="button" data-act="autostart" id="ctx-autostart">开启开机启动</button>
+      <hr />
+      <button type="button" data-act="hide">隐藏到托盘</button>
+      <button type="button" data-act="quit">退出砚历</button>
+    </div>
+
+    <section class="sheet" id="settings" hidden>
+      <div class="sheet-card">
+        <header class="sheet-head">
+          <h2>设置</h2>
+          <button class="icon-btn" id="settings-close" type="button" aria-label="关闭设置">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" /></svg>
+          </button>
+        </header>
+        <label>窗口尺寸
+          <select id="set-size"></select>
+        </label>
+        <label>配色方案
+          <select id="set-theme"></select>
+        </label>
+        <label>字体
+          <select id="set-font"></select>
+        </label>
+        <label>显示层级
+          <select id="set-layer"></select>
+        </label>
+        <label>天气位置
+          <select id="set-weather-pos"></select>
+        </label>
+        <label>透明度 <span id="opacity-val">86%</span>
+          <input id="set-opacity" type="range" min="55" max="100" />
+        </label>
+        <label class="check">
+          <input id="set-autostart" type="checkbox" />
+          开机自动启动
+        </label>
+        <label>天气城市
+          <div class="place-row">
+            <input id="set-place" type="search" placeholder="输入城市，如 上海" />
+            <button class="text-btn" id="search-place" type="button">搜索</button>
+          </div>
+        </label>
+        <div class="place-list" id="place-list"></div>
+        <p class="place-now" id="place-now">尚未选择位置</p>
+        <p class="place-src">天气来自中央气象台，只显示其发布的预警</p>
+      </div>
+    </section>
+
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

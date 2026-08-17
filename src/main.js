@@ -1,0 +1,550 @@
+import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
+import { getCurrentWindow } from "@tauri-apps/api/window";
+import { disable, enable, isEnabled } from "@tauri-apps/plugin-autostart";
+import {
+  WEEKDAYS,
+  getDayInfo,
+  getMonthGrid,
+  getMonthMeta,
+  getNextHolidayLabel,
+  getNextJieQiLabel,
+  getTodayAlmanac,
+  shiftMonth,
+  todayParts,
+} from "./calendar.js";
+import { syncHolidays } from "./holidays.js";
+import { fetchWeather, searchPlaces } from "./weather.js";
+import {
+  FONTS,
+  LAYERS,
+  SIZES,
+  THEMES,
+  WEATHER_POS,
+  fontValue,
+  hasSavedSettings,
+  loadSettings,
+  saveSettings,
+} from "./settings.js";
+
+const POS_KEY = "yanli-pos";
+const SELECTED_KEY = "yanli-selected";
+
+const state = {
+  ...todayParts(),
+  selected: todayParts(),
+  settings: loadSettings(),
+  weatherOutlook: [],
+  calendarDay: "",
+};
+
+const els = {
+  body: document.body,
+  ganzhi: document.getElementById("ganzhi"),
+  monthLabel: document.getElementById("month-label"),
+  monthSub: document.getElementById("month-sub"),
+  weekdays: document.getElementById("weekdays"),
+  grid: document.getElementById("grid"),
+  detail: document.getElementById("detail"),
+  dock: document.getElementById("dock"),
+  weatherTop: document.getElementById("weather-top"),
+  weatherBottom: document.getElementById("weather-bottom"),
+  weatherAlert: document.getElementById("weather-alert"),
+  ctxDesktop: document.getElementById("ctx-desktop"),
+  ctxAutostart: document.getElementById("ctx-autostart"),
+  ctx: document.getElementById("ctx-menu"),
+  settings: document.getElementById("settings"),
+  size: document.getElementById("set-size"),
+  theme: document.getElementById("set-theme"),
+  font: document.getElementById("set-font"),
+  layer: document.getElementById("set-layer"),
+  weatherPos: document.getElementById("set-weather-pos"),
+  opacity: document.getElementById("set-opacity"),
+  opacityVal: document.getElementById("opacity-val"),
+  autostart: document.getElementById("set-autostart"),
+  place: document.getElementById("set-place"),
+  placeList: document.getElementById("place-list"),
+  placeNow: document.getElementById("place-now"),
+};
+
+function sameDay(a, b) {
+  return a.year === b.year && a.month === b.month && a.day === b.day;
+}
+
+function fillSelect(select, items, current) {
+  select.innerHTML = items
+    .map((item) => {
+      const id = item.id || item;
+      const label = item.label || SIZES[id]?.label || id;
+      return `<option value="${id}" ${id === current ? "selected" : ""}>${label}</option>`;
+    })
+    .join("");
+}
+
+function applyAppearance() {
+  const s = state.settings;
+  els.body.dataset.theme = s.theme;
+  els.body.dataset.size = s.size;
+  els.body.style.setProperty("--card-alpha", String(s.opacity / 100));
+  els.body.style.setProperty("--font-body", fontValue(s.font));
+  els.opacity.value = String(s.opacity);
+  els.opacityVal.textContent = `${s.opacity}%`;
+  els.autostart.checked = Boolean(s.autostart);
+  els.placeNow.textContent = s.weather?.name || "尚未选择位置";
+  refreshCtxLabels();
+}
+
+async function applyWindowChrome() {
+  const size = SIZES[state.settings.size] || SIZES.m;
+  try {
+    await invoke("resize_window", { width: size.width, height: size.height });
+  } catch {
+    // 浏览器预览
+  }
+  try {
+    await invoke("set_window_layer", { layer: state.settings.layer });
+  } catch {
+    // ignore
+  }
+}
+
+async function applyAutostart() {
+  if (!hasSavedSettings()) {
+    try {
+      state.settings.autostart = await invoke("is_autostart_on");
+      persist();
+      applyAppearance();
+    } catch {
+      // 沿用默认值
+    }
+  }
+  try {
+    await invoke("set_autostart", { enabled: Boolean(state.settings.autostart) });
+  } catch {
+    try {
+      const enabled = await isEnabled();
+      if (state.settings.autostart && !enabled) await enable();
+      if (!state.settings.autostart && enabled) await disable();
+    } catch {
+      // 仍失败则保持设置值，下次安装包环境再生效
+    }
+  }
+  refreshCtxLabels();
+}
+
+function refreshCtxLabels() {
+  if (els.ctxDesktop) {
+    els.ctxDesktop.textContent =
+      state.settings.layer === "desktop" ? "取消贴桌面" : "贴在壁纸上";
+  }
+  if (els.ctxAutostart) {
+    els.ctxAutostart.textContent = state.settings.autostart
+      ? "关闭开机启动"
+      : "开启开机启动";
+  }
+}
+
+function persist() {
+  saveSettings(state.settings);
+}
+
+function renderWeekdays() {
+  els.weekdays.innerHTML = WEEKDAYS.map((name, index) => {
+    const weekend = index === 0 || index === 6;
+    return `<span class="${weekend ? "is-weekend" : ""}">${name}</span>`;
+  }).join("");
+}
+
+function renderMonth() {
+  const today = todayParts();
+  const meta = getMonthMeta(state.year, state.month);
+  els.ganzhi.textContent = `${meta.ganZhiYear} · ${meta.zodiac}`;
+  els.monthLabel.textContent = meta.monthLabel;
+  els.monthSub.textContent = `${meta.year}`;
+
+  const cells = getMonthGrid(state.year, state.month);
+  els.grid.innerHTML = cells
+    .map((cell) => {
+      const classes = ["day"];
+      if (!cell.inMonth) classes.push("is-out");
+      if (cell.rest) classes.push("is-rest");
+      if (cell.work) classes.push("is-work");
+      if (sameDay(cell, today)) classes.push("is-today");
+      if (sameDay(cell, state.selected)) classes.push("is-selected");
+      const extra = [cell.jieqi, ...cell.festivals].filter(Boolean).join(" ");
+      const label = `${cell.year}年${cell.month}月${cell.day}日 ${cell.lunarText} ${extra}`;
+      const current = sameDay(cell, today) ? ' aria-current="date"' : "";
+      const badgeClass = cell.work ? "is-work" : cell.rest ? "is-rest" : "";
+      return `
+        <button type="button" class="${classes.join(" ")}"
+          data-year="${cell.year}" data-month="${cell.month}" data-day="${cell.day}"
+          aria-label="${label}"${current}>
+          <span class="day-num">${cell.day}</span>
+          <span class="day-sub">${cell.sub}</span>
+          ${cell.badge ? `<span class="day-badge ${badgeClass}">${cell.badge}</span>` : ""}
+        </button>`;
+    })
+    .join("");
+  renderDetail();
+  renderDock();
+}
+
+function renderDetail() {
+  const info = getDayInfo(state.selected.year, state.selected.month, state.selected.day);
+  const jieqiLine = getNextJieQiLabel(info.year, info.month, info.day);
+  const status = info.work ? "调休上班" : info.rest ? "休息日" : "工作日";
+  const festival = info.festivals.slice(0, 3).join(" / ") || info.official?.name || "";
+  els.detail.innerHTML = `
+    <div class="detail-day" aria-hidden="true">${info.day}</div>
+    <div class="detail-copy">
+      <p class="detail-title">星期${info.weekday} · ${info.lunarText}</p>
+      <p class="detail-meta">${[festival, status, jieqiLine].filter(Boolean).join("  ·  ")}</p>
+    </div>`;
+}
+
+function renderDock() {
+  if (!els.dock) return;
+  const selected = state.selected;
+  const from = new Date(selected.year, selected.month - 1, selected.day);
+  const next = getNextHolidayLabel(from);
+  const almanac = getTodayAlmanac(selected.year, selected.month, selected.day);
+  const yi = almanac.yi ? `宜 ${almanac.yi}` : "";
+  const ji = almanac.ji ? `忌 ${almanac.ji}` : "";
+  const outlook = state.weatherOutlook.join(" · ");
+  const text = [next, outlook, [yi, ji].filter(Boolean).join(" · ")].filter(Boolean).join("  ·  ");
+  els.dock.hidden = !text;
+  els.dock.textContent = text;
+}
+
+function selectDay(year, month, day) {
+  state.year = year;
+  state.month = month;
+  state.selected = { year, month, day };
+  localStorage.setItem(SELECTED_KEY, JSON.stringify(state.selected));
+  renderMonth();
+}
+
+function goMonth(delta) {
+  const next = shiftMonth(state.year, state.month, delta);
+  state.year = next.year;
+  state.month = next.month;
+  const today = todayParts();
+  state.selected =
+    state.year === today.year && state.month === today.month
+      ? today
+      : { year: state.year, month: state.month, day: 1 };
+  renderMonth();
+}
+
+function goToday() {
+  const today = todayParts();
+  state.year = today.year;
+  state.month = today.month;
+  state.selected = today;
+  renderMonth();
+}
+
+function openSettings() {
+  els.settings.hidden = false;
+}
+
+function closeSettings() {
+  els.settings.hidden = true;
+}
+
+function hideCtx() {
+  els.ctx.hidden = true;
+}
+
+function showCtx(x, y) {
+  els.ctx.hidden = false;
+  const pad = 8;
+  const maxX = window.innerWidth - els.ctx.offsetWidth - pad;
+  const maxY = window.innerHeight - els.ctx.offsetHeight - pad;
+  els.ctx.style.left = `${Math.max(pad, Math.min(x, maxX))}px`;
+  els.ctx.style.top = `${Math.max(pad, Math.min(y, maxY))}px`;
+}
+
+async function hideWindow() {
+  try {
+    await invoke("hide_to_tray");
+  } catch {
+    window.close();
+  }
+}
+
+async function quitApp() {
+  try {
+    await invoke("quit_app");
+  } catch {
+    window.close();
+  }
+}
+
+function renderWeather(target, data, name) {
+  target.hidden = false;
+  target.textContent = `${name} ${data.temp}° ${data.text}`;
+}
+
+function renderAlerts(alerts) {
+  if (!alerts?.length) {
+    els.weatherAlert.hidden = true;
+    els.weatherAlert.textContent = "";
+    return;
+  }
+  const top = alerts[0];
+  els.weatherAlert.hidden = false;
+  els.weatherAlert.className = `alert is-${top.level}`;
+  els.weatherAlert.textContent = alerts.map((item) => item.text).join(" · ");
+}
+
+async function refreshWeather() {
+  const s = state.settings;
+  els.weatherTop.hidden = true;
+  els.weatherBottom.hidden = true;
+  els.weatherAlert.hidden = true;
+  state.weatherOutlook = [];
+  if (s.weatherPos === "off" || !s.weather) {
+    renderDock();
+    return;
+  }
+  const useBottom = s.size === "s" || s.weatherPos === "bottom";
+  const box = useBottom ? els.weatherBottom : els.weatherTop;
+  try {
+    const data = await fetchWeather(s.weather);
+    state.weatherOutlook = data.outlook || [];
+    renderWeather(box, data, s.weather.short || s.weather.name.split(" · ")[0]);
+    renderAlerts(data.alerts);
+  } catch {
+    box.hidden = false;
+    box.textContent = "天气暂不可用";
+  }
+  renderDock();
+}
+
+function watchCalendarDay() {
+  const today = todayParts();
+  const key = `${today.year}-${today.month}-${today.day}`;
+  if (!state.calendarDay) {
+    state.calendarDay = key;
+    return;
+  }
+  if (key === state.calendarDay) return;
+  const [year, month, day] = state.calendarDay.split("-").map(Number);
+  state.calendarDay = key;
+  if (sameDay(state.selected, { year, month, day })) {
+    state.year = today.year;
+    state.month = today.month;
+    state.selected = today;
+  }
+  renderMonth();
+  refreshWeather();
+}
+
+async function restorePosition() {
+  const raw = localStorage.getItem(POS_KEY);
+  if (!raw) return;
+  try {
+    const { x, y } = JSON.parse(raw);
+    await invoke("move_window", { x, y });
+  } catch {
+    localStorage.removeItem(POS_KEY);
+  }
+}
+
+function bindDrag(el) {
+  el.addEventListener("mousedown", async (event) => {
+    if (event.button !== 0) return;
+    if (event.target.closest("button, input, select, a, .weather")) return;
+    const start = { x: event.screenX, y: event.screenY };
+    let origin = { x: event.screenX - event.clientX, y: event.screenY - event.clientY };
+    try {
+      const win = getCurrentWindow();
+      origin = await win.outerPosition();
+    } catch {
+      // 浏览器预览没有窗口坐标
+    }
+    let last = { x: origin.x, y: origin.y };
+    const onMove = async (moveEvent) => {
+      last = {
+        x: origin.x + (moveEvent.screenX - start.x),
+        y: origin.y + (moveEvent.screenY - start.y),
+      };
+      try {
+        await invoke("move_window", last);
+      } catch {
+        // ignore
+      }
+    };
+    const onUp = () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+      localStorage.setItem(POS_KEY, JSON.stringify(last));
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  });
+}
+
+function bindSettingsForm() {
+  fillSelect(els.size, Object.keys(SIZES).map((id) => ({ id, label: SIZES[id].label })), state.settings.size);
+  fillSelect(els.theme, THEMES, state.settings.theme);
+  fillSelect(els.font, FONTS, state.settings.font);
+  fillSelect(els.layer, LAYERS, state.settings.layer);
+  fillSelect(els.weatherPos, WEATHER_POS, state.settings.weatherPos);
+
+  const onChange = async (key, value) => {
+    state.settings[key] = value;
+    persist();
+    applyAppearance();
+    if (key === "size" || key === "layer") await applyWindowChrome();
+    if (key === "autostart") await applyAutostart();
+    if (key === "size" || key === "weatherPos") await refreshWeather();
+  };
+
+  els.size.addEventListener("change", () => onChange("size", els.size.value));
+  els.theme.addEventListener("change", () => onChange("theme", els.theme.value));
+  els.font.addEventListener("change", () => onChange("font", els.font.value));
+  els.layer.addEventListener("change", () => onChange("layer", els.layer.value));
+  els.weatherPos.addEventListener("change", () => onChange("weatherPos", els.weatherPos.value));
+  els.opacity.addEventListener("input", () => {
+    state.settings.opacity = Number(els.opacity.value);
+    persist();
+    applyAppearance();
+  });
+  els.autostart.addEventListener("change", () => onChange("autostart", els.autostart.checked));
+}
+
+async function searchCity() {
+  const query = els.place.value.trim();
+  if (!query) return;
+  els.placeList.textContent = "搜索中…";
+  try {
+    const places = await searchPlaces(query);
+    if (!places.length) {
+      els.placeList.textContent = "没有找到该地点";
+      return;
+    }
+    els.placeList.innerHTML = places
+      .map(
+        (item, index) =>
+          `<button type="button" data-index="${index}">${item.name}</button>`,
+      )
+      .join("");
+    els.placeList.querySelectorAll("button").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        state.settings.weather = places[Number(btn.dataset.index)];
+        persist();
+        applyAppearance();
+        els.placeList.innerHTML = "";
+        await refreshWeather();
+      });
+    });
+  } catch {
+    els.placeList.textContent = "搜索失败，请检查网络";
+  }
+}
+
+function bindEvents() {
+  document.getElementById("prev-btn").addEventListener("click", () => goMonth(-1));
+  document.getElementById("next-btn").addEventListener("click", () => goMonth(1));
+  document.getElementById("today-btn").addEventListener("click", goToday);
+  document.getElementById("close-btn").addEventListener("click", hideWindow);
+  document.getElementById("settings-btn").addEventListener("click", openSettings);
+  document.getElementById("settings-close").addEventListener("click", closeSettings);
+  document.getElementById("search-place").addEventListener("click", searchCity);
+  els.place.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") searchCity();
+  });
+  els.grid.addEventListener("click", (event) => {
+    const btn = event.target.closest("button[data-day]");
+    if (!btn) return;
+    selectDay(Number(btn.dataset.year), Number(btn.dataset.month), Number(btn.dataset.day));
+  });
+  document.addEventListener("contextmenu", (event) => {
+    event.preventDefault();
+    if (event.target.closest(".sheet")) return;
+    refreshCtxLabels();
+    showCtx(event.clientX, event.clientY);
+  });
+  document.addEventListener("click", (event) => {
+    if (!event.target.closest(".ctx")) hideCtx();
+  });
+  els.ctx.addEventListener("click", async (event) => {
+    const act = event.target.closest("button")?.dataset.act;
+    hideCtx();
+    if (act === "today") goToday();
+    if (act === "settings") openSettings();
+    if (act === "desktop") {
+      state.settings.layer = state.settings.layer === "desktop" ? "normal" : "desktop";
+      persist();
+      els.layer.value = state.settings.layer;
+      refreshCtxLabels();
+      await applyWindowChrome();
+    }
+    if (act === "autostart") {
+      state.settings.autostart = !state.settings.autostart;
+      persist();
+      applyAppearance();
+      await applyAutostart();
+    }
+    if (act === "hide") hideWindow();
+    if (act === "quit") quitApp();
+  });
+  bindDrag(document.getElementById("drag-bar"));
+  bindDrag(document.getElementById("month-drag"));
+}
+
+function restoreSelected() {
+  const raw = localStorage.getItem(SELECTED_KEY);
+  if (!raw) return;
+  try {
+    const selected = JSON.parse(raw);
+    if (selected.year && selected.month && selected.day) {
+      state.year = selected.year;
+      state.month = selected.month;
+      state.selected = selected;
+    }
+  } catch {
+    localStorage.removeItem(SELECTED_KEY);
+  }
+}
+
+async function bindNativeEvents() {
+  try {
+    await listen("yanli://settings", openSettings);
+    await listen("yanli://today", goToday);
+    await listen("yanli://layer", (event) => {
+      state.settings.layer = event.payload || "desktop";
+      persist();
+      els.layer.value = state.settings.layer;
+    });
+  } catch {
+    // 浏览器预览
+  }
+}
+
+fillSelect(els.size, Object.keys(SIZES).map((id) => ({ id, label: SIZES[id].label })), state.settings.size);
+restoreSelected();
+bindSettingsForm();
+bindEvents();
+renderWeekdays();
+applyAppearance();
+renderMonth();
+applyWindowChrome();
+applyAutostart();
+refreshCtxLabels();
+restorePosition();
+refreshWeather();
+bindNativeEvents();
+syncHolidays()
+  .then(() => renderMonth())
+  .catch(() => {});
+state.calendarDay = `${todayParts().year}-${todayParts().month}-${todayParts().day}`;
+setInterval(refreshWeather, 30 * 60 * 1000);
+setInterval(watchCalendarDay, 60 * 1000);
+setInterval(() => {
+  syncHolidays()
+    .then(() => renderMonth())
+    .catch(() => {});
+}, 12 * 60 * 60 * 1000);
