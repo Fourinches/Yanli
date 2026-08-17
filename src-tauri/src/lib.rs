@@ -220,6 +220,7 @@ pub fn run() {
             tray.build(app)?;
 
             if let Some(win) = app.get_webview_window("main") {
+                let _ = win.set_background_color(Some(tauri::window::Color(0, 0, 0, 0)));
                 let handle = app.handle().clone();
                 win.on_window_event(move |event| {
                     if let WindowEvent::CloseRequested { api, .. } = event {
