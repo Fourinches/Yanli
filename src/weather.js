@@ -369,48 +369,97 @@ function asPoint(row) {
   return { lon, lat };
 }
 
-function parseStorm(typhoon) {
+function strongestPoint(points) {
+  return points.reduce((best, row) => (Number(row[7]) || 0) > (Number(best[7]) || 0) ? row : best, points[0]);
+}
+
+function seaPlace(lon, lat) {
+  if (lon > 140 && lat >= 18) return "日本以东洋面";
+  if (lon >= 128 && lon <= 142 && lat >= 30) return "日本附近";
+  if (lon >= 122 && lon <= 132 && lat >= 24 && lat <= 34) return "东海至琉球";
+  if (lon >= 124 && lon <= 132 && lat >= 8 && lat <= 20) return "菲律宾附近";
+  if (lon > 122 && lon < 130 && lat > 20 && lat < 28) return "台湾以东洋面";
+  if (lon >= 119 && lon <= 124 && lat >= 21 && lat <= 26) return "台湾附近";
+  if (lon < 121 && lat < 20) return "南海";
+  if (lon >= 105 && lon <= 123 && lat >= 18 && lat <= 41) return "中国近海";
+  return "西北太平洋";
+}
+
+function circledPoint(points) {
+  return [...points].reverse().find((row) => ringRadii(row[10]).length) || points[points.length - 1];
+}
+
+function parseStorm(typhoon, allowStopped = false) {
   if (!Array.isArray(typhoon) || typhoon.length < 9) return null;
   const [, , cn, num, , , , status, points] = typhoon;
-  if (status === "stop" || !Array.isArray(points) || !points.length) return null;
+  if ((status === "stop" && !allowStopped) || !Array.isArray(points) || !points.length) return null;
   const latest = points[points.length - 1];
   if (!Array.isArray(latest) || latest.length < 10) return null;
-  const grade = String(latest[3] || "TD");
+  const show = allowStopped && status === "stop" ? strongestPoint(points) : latest;
+  const circled = circledPoint(points);
+  const grade = String(show[3] || latest[3] || "TD");
   const named = Boolean(cn) && cn !== "热带低压" && cn !== "nameless";
   const no = stormNo(num);
-  const title = named ? `${no}台风「${cn}」· ${GRADE[grade] || grade}` : `${no}${GRADE[grade] || "热带低压"}`;
-  const dir = DIR[latest[8]] || "";
-  const speed = Number(latest[9]);
-  const pressure = Number(latest[6]);
+  const head = allowStopped && status === "stop" ? "预览 · " : "";
+  const title = `${head}${named ? `${no}台风「${cn}」· ${GRADE[grade] || grade}` : `${no}${GRADE[grade] || "热带低压"}`}`;
+  const dir = DIR[show[8]] || "";
+  const speed = Number(show[9]);
+  const pressure = Number(show[6]);
   const move = [dir && `向${dir}`, Number.isFinite(speed) && speed > 0 ? `${Math.round(speed)}公里/时` : ""]
     .filter(Boolean)
     .join(" ");
-  const center = [`中心附近${windScale(latest[7])}`, Number.isFinite(pressure) ? `${Math.round(pressure)}百帕` : ""]
+  const center = [`中心附近${windScale(show[7])}`, Number.isFinite(pressure) ? `${Math.round(pressure)}百帕` : ""]
     .filter(Boolean)
     .join(" · ");
-  const forecast = Array.isArray(latest[11]?.BABJ) ? latest[11].BABJ.map((row) => asPoint([0, 0, 0, 0, row[2], row[3]])).filter(Boolean) : [];
+  const forecast = Array.isArray(latest[11]?.BABJ)
+    ? latest[11].BABJ.map((row) => asPoint([0, 0, 0, 0, row[2], row[3]])).filter(Boolean)
+    : [];
   return {
     title: title.trim(),
     tone: stormTone(grade),
     named,
     lon: Number(latest[4]),
+    place: `中心在${seaPlace(Number(show[4]), Number(show[5]))}（${Number(show[5]).toFixed(1)}°N ${Number(show[4]).toFixed(1)}°E）`,
     meta: [move, center].filter(Boolean).join(" · "),
-    rings: ringText(latest[10]),
-    ringKm: ringRadii(latest[10]),
+    rings: ringText((allowStopped ? show : circled)[10]),
+    ringKm: ringRadii((allowStopped ? show : circled)[10]),
+    here: asPoint(show),
+    ringAt: asPoint(allowStopped ? show : circled),
     past: points.map(asPoint).filter(Boolean),
     forecast,
   };
 }
 
 export function parseTyphoons(bundle) {
+  const allowStopped = Boolean(bundle?.preview);
   return (bundle?.views || [])
-    .map((view) => parseStorm(view?.typhoon || view))
+    .map((view) => parseStorm(view?.typhoon || view, allowStopped))
     .filter(Boolean)
     .sort((a, b) => Number(b.named) - Number(a.named) || a.lon - b.lon)
     .slice(0, 2);
 }
 
+export function weatherFxText(data) {
+  const alerts = (data?.alerts || []).map((item) => item.text).join("");
+  if (/台风/.test(alerts)) return "台风";
+  if (/雷/.test(alerts)) return "雷阵雨";
+  if (/雨|雹/.test(alerts)) return "中雨";
+  if (/雪/.test(alerts)) return "雪";
+  return data?.text || "";
+}
+
+export function officialChart(url) {
+  const text = String(url || "");
+  if (text.startsWith("data:image/jpeg;base64,") || text.startsWith("data:image/png;base64,")) return text;
+  if (!text.startsWith("https://image.nmc.cn/product/") || !text.includes("/TCBU/")) return "";
+  return text;
+}
+
 export async function fetchTyphoons() {
   const bundle = await invoke("cma_get", { kind: "typhoon", q: "" });
-  return parseTyphoons(bundle);
+  return {
+    storms: parseTyphoons(bundle),
+    chart: officialChart(bundle.chart),
+    page: bundle.page || "https://typhoon.nmc.cn/web.html",
+  };
 }

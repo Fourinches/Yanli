@@ -98,10 +98,20 @@
           开机自动启动
         </label>
         <label>天气城市
-          <div class="place-row">
-            <input id="set-place" type="search" placeholder="输入城市，如 上海" />
-            <button class="text-btn" id="search-place" type="button">搜索</button>
-          </div>
+          <form class="place-row" id="place-form" autocomplete="off" spellcheck="false">
+            <input
+              id="set-place"
+              type="text"
+              name="yanli-city-query"
+              autocomplete="off"
+              autocorrect="off"
+              autocapitalize="off"
+              spellcheck="false"
+              readonly
+              placeholder="输入城市，如 上海"
+            />
+            <button class="text-btn" id="search-place" type="submit">搜索</button>
+          </form>
         </label>
         <div class="place-list" id="place-list"></div>
         <p class="place-now" id="place-now">尚未选择位置</p>
@@ -109,6 +119,21 @@
         <p class="place-src" id="app-version">砚历</p>
         <button class="text-btn" id="check-update" type="button">检查更新</button>
         <p class="place-now" id="update-hint"></p>
+      </div>
+    </section>
+
+    <section class="sheet" id="chart-sheet" hidden>
+      <div class="sheet-card chart-card">
+        <header class="sheet-head">
+          <h2>台风路径图 <span class="chart-hint">滚轮放大 · 拖动查看</span></h2>
+          <button class="icon-btn" id="chart-close" type="button" aria-label="关闭路径图">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" /></svg>
+          </button>
+        </header>
+        <div class="chart-view" id="chart-view">
+          <img id="chart-zoom" alt="中央气象台台风路径图" />
+        </div>
+        <button class="text-btn" id="chart-site" type="button">打开中央气象台</button>
       </div>
     </section>
 

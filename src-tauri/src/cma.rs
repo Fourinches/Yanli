@@ -25,6 +25,21 @@ async fn get_json(url: &str, referer: &str, query: &[(&str, &str)]) -> Result<Va
     res.json::<Value>().await.map_err(|e| e.to_string())
 }
 
+async fn get_bytes(url: &str, referer: &str) -> Result<Vec<u8>, String> {
+    let res = client()?
+        .get(url)
+        .header("User-Agent", UA)
+        .header("Referer", referer)
+        .header("Accept", "image/jpeg,image/png,image/*,*/*")
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    if !res.status().is_success() {
+        return Err(format!("气象台返回 {}", res.status()));
+    }
+    res.bytes().await.map_err(|e| e.to_string()).map(|b| b.to_vec())
+}
+
 async fn get_text(url: &str, referer: &str) -> Result<String, String> {
     let res = client()?
         .get(url)
@@ -60,11 +75,11 @@ fn typhoon_id(row: &Value) -> Option<String> {
     id.as_str().filter(|s| !s.is_empty() && s.chars().all(|c| c.is_ascii_digit())).map(str::to_string)
 }
 
-fn active_typhoon_ids(list: &Value) -> Vec<String> {
-    list.get("typhoonList")
-        .and_then(Value::as_array)
-        .into_iter()
-        .flatten()
+fn typhoon_ids(list: &Value) -> Vec<String> {
+    let Some(rows) = list.get("typhoonList").and_then(Value::as_array) else {
+        return Vec::new();
+    };
+    rows.iter()
         .filter(|row| {
             row.as_array()
                 .and_then(|cols| cols.last())
@@ -126,17 +141,83 @@ pub async fn cma_get(kind: String, q: String) -> Result<Value, String> {
                 )
                 .await?,
             )?;
+            let ids = typhoon_ids(&list);
             let mut views = Vec::new();
-            for id in active_typhoon_ids(&list) {
+            for id in ids {
                 let url = format!("https://typhoon.nmc.cn/weatherservice/typhoon/jsons/view_{id}");
                 if let Ok(view) = get_text(&url, referer).await.and_then(|raw| parse_jsonp(&raw)) {
                     views.push(view);
                 }
             }
-            Ok(json!({ "list": list, "views": views }))
+            Ok(json!({
+                "list": list,
+                "views": views,
+                "chart": typhoon_chart().await.unwrap_or_default(),
+                "page": "https://www.nmc.cn/publish/typhoon/probability-img2.html",
+            }))
         }
         _ => Err("未知请求".into()),
     }
+}
+
+fn extract_typhoon_chart(html: &str) -> Option<String> {
+    let key = "https://image.nmc.cn/product/";
+    let mut from = 0;
+    while let Some(rel) = html[from..].find(key) {
+        let start = from + rel;
+        let rest = &html[start..];
+        let end = rest.find('"').or_else(|| rest.find('\''))?;
+        let url = rest[..end].replace("&amp;", "&");
+        if url.contains("/TCBU/") {
+            return Some(url);
+        }
+        from = start + key.len();
+    }
+    None
+}
+
+fn b64(bytes: &[u8]) -> String {
+    const T: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::with_capacity((bytes.len() + 2) / 3 * 4);
+    for chunk in bytes.chunks(3) {
+        let a = u32::from(chunk[0]);
+        let b = u32::from(chunk.get(1).copied().unwrap_or(0));
+        let c = u32::from(chunk.get(2).copied().unwrap_or(0));
+        let n = (a << 16) | (b << 8) | c;
+        out.push(T[(n >> 18) as usize] as char);
+        out.push(T[((n >> 12) & 63) as usize] as char);
+        out.push(if chunk.len() > 1 { T[((n >> 6) & 63) as usize] as char } else { '=' });
+        out.push(if chunk.len() > 2 { T[(n & 63) as usize] as char } else { '=' });
+    }
+    out
+}
+
+fn as_data_url(bytes: &[u8]) -> Option<String> {
+    if bytes.len() < 8 || bytes.len() > 1_200_000 {
+        return None;
+    }
+    if bytes.starts_with(&[0xFF, 0xD8, 0xFF]) {
+        return Some(format!("data:image/jpeg;base64,{}", b64(bytes)));
+    }
+    if bytes.starts_with(&[0x89, 0x50, 0x4E, 0x47]) {
+        return Some(format!("data:image/png;base64,{}", b64(bytes)));
+    }
+    None
+}
+
+async fn typhoon_chart() -> Result<String, String> {
+    let html = get_text(
+        "https://www.nmc.cn/publish/typhoon/probability-img2.html",
+        "https://www.nmc.cn/",
+    )
+    .await?;
+    let url = extract_typhoon_chart(&html).ok_or_else(|| "没有路径图".to_string())?;
+    if let Ok(bytes) = get_bytes(&url, "https://www.nmc.cn/").await {
+        if let Some(data) = as_data_url(&bytes) {
+            return Ok(data);
+        }
+    }
+    Ok(url)
 }
 
 async fn locate_path(id: &str) -> String {
@@ -171,4 +252,18 @@ async fn enrich_places(raw: &Value) -> Vec<Value> {
         }
     }
     items
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn picks_tcbu_chart() {
+        let html = r#"<img src="https://image.nmc.cn/product/2026/08/14/SAT/x.jpg"><img src="https://image.nmc.cn/product/2026/08/14/TCBU/medium/SEVP.JPG">"#;
+        assert_eq!(
+            extract_typhoon_chart(html).as_deref(),
+            Some("https://image.nmc.cn/product/2026/08/14/TCBU/medium/SEVP.JPG")
+        );
+    }
 }

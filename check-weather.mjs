@@ -1,4 +1,4 @@
-import { formatHierarchy, parseCmaWeather, parseTyphoons, searchPlaces, upcomingSevere, weatherMood } from "./src/weather.js";
+import { formatHierarchy, officialChart, parseCmaWeather, parseTyphoons, searchPlaces, upcomingSevere, weatherFxText, weatherMood } from "./src/weather.js";
 
 const shanghai = await searchPlaces("上海");
 if (shanghai.length !== 1 || shanghai[0].short !== "上海" || shanghai[0].station !== "58367" || shanghai[0].name !== "上海-中国") {
@@ -151,6 +151,7 @@ if (
   storms.length !== 1 ||
   storms[0].title !== "今年第17号台风「浪卡」· 热带风暴" ||
   storms[0].tone !== "blue" ||
+  storms[0].place !== "中心在日本以东洋面（22.9°N 145.3°E）" ||
   storms[0].meta !== "向东 24公里/时 · 中心附近8级 · 998百帕" ||
   storms[0].rings !== "七级风圈 300–600公里 · 十级风圈 60–80公里" ||
   storms[0].past.length !== 2 ||
@@ -158,6 +159,22 @@ if (
 ) {
   console.error(storms);
   throw new Error("台风通报解析错误");
+}
+
+if (
+  officialChart("https://image.nmc.cn/product/2026/08/14/TCBU/medium/SEVP_NMC_TCBU.JPG") !== "https://image.nmc.cn/product/2026/08/14/TCBU/medium/SEVP_NMC_TCBU.JPG"
+  || officialChart("data:image/jpeg;base64,/9j/") !== "data:image/jpeg;base64,/9j/"
+  || officialChart("https://evil.example/TCBU/x.jpg")
+  || officialChart("https://image.nmc.cn/product/2026/08/14/SAT/x.jpg")
+) {
+  throw new Error("官方路径图地址校验错误");
+}
+
+if (weatherFxText({ text: "多云", alerts: [{ text: "雷雨大风黄色预警" }] }) !== "雷阵雨") {
+  throw new Error("雷雨大风预警应带动雷阵雨特效");
+}
+if (weatherFxText({ text: "多云", alerts: [] }) !== "多云") {
+  throw new Error("无预警时应跟随实况");
 }
 
 console.log("weather checks passed", shanghai[0].name, hangzhou[0].name, `北京 ${beijing.temp}° ${beijing.text}`);

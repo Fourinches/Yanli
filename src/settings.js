@@ -53,14 +53,18 @@ export function loadSettings() {
   try {
     const raw = localStorage.getItem(KEY);
     if (!raw) return { ...DEFAULTS };
-    return { ...DEFAULTS, ...JSON.parse(raw) };
+    const next = { ...DEFAULTS, ...JSON.parse(raw) };
+    delete next.weatherFx;
+    return next;
   } catch {
     return { ...DEFAULTS };
   }
 }
 
 export function saveSettings(next) {
-  localStorage.setItem(KEY, JSON.stringify(next));
+  const clean = { ...next };
+  delete clean.weatherFx;
+  localStorage.setItem(KEY, JSON.stringify(clean));
 }
 
 export function fontValue(id) {

@@ -13,7 +13,7 @@ import {
   todayParts,
 } from "./calendar.js";
 import { syncHolidays } from "./holidays.js";
-import { fetchTyphoons, fetchWeather, searchPlaces, weatherMood } from "./weather.js";
+import { fetchTyphoons, fetchWeather, searchPlaces, weatherFxText, weatherMood } from "./weather.js";
 import {
   FONTS,
   LAYERS,
@@ -52,7 +52,7 @@ const els = {
   weatherBottom: document.getElementById("weather-bottom"),
   weatherAlert: document.getElementById("weather-alert"),
   typhoon: document.getElementById("typhoon"),
-  weatherFx: document.getElementById("weather-fx"),
+  fxLayer: document.getElementById("weather-fx"),
   ctxDesktop: document.getElementById("ctx-desktop"),
   ctxAutostart: document.getElementById("ctx-autostart"),
   ctx: document.getElementById("ctx-menu"),
@@ -71,6 +71,9 @@ const els = {
   appVersion: document.getElementById("app-version"),
   checkUpdate: document.getElementById("check-update"),
   updateHint: document.getElementById("update-hint"),
+  chartSheet: document.getElementById("chart-sheet"),
+  chartView: document.getElementById("chart-view"),
+  chartZoom: document.getElementById("chart-zoom"),
   updateSheet: document.getElementById("update-sheet"),
   updateCopy: document.getElementById("update-copy"),
   updateStatus: document.getElementById("update-status"),
@@ -276,10 +279,66 @@ function goToday() {
 
 function openSettings() {
   els.settings.hidden = false;
+  if (els.place) {
+    els.place.value = "";
+    els.place.setAttribute("readonly", "");
+    els.placeList.replaceChildren();
+  }
 }
 
 function closeSettings() {
   els.settings.hidden = true;
+}
+
+const chartPan = { scale: 1, x: 0, y: 0, drag: null };
+
+function paintChartPan() {
+  if (!els.chartZoom) return;
+  els.chartZoom.style.transform = `translate(${chartPan.x}px, ${chartPan.y}px) scale(${chartPan.scale})`;
+  els.chartView?.classList.toggle("is-zoomed", chartPan.scale > 1.01);
+  els.chartView?.classList.toggle("is-dragging", Boolean(chartPan.drag));
+}
+
+function resetChartPan() {
+  chartPan.scale = 1;
+  chartPan.x = 0;
+  chartPan.y = 0;
+  chartPan.drag = null;
+  paintChartPan();
+}
+
+function zoomChart(event) {
+  const view = els.chartView;
+  if (!view) return;
+  const next = Math.min(8, Math.max(1, chartPan.scale * (event.deltaY < 0 ? 1.2 : 1 / 1.2)));
+  if (next === chartPan.scale) return;
+  const rect = view.getBoundingClientRect();
+  const cx = event.clientX - rect.left - rect.width / 2;
+  const cy = event.clientY - rect.top - rect.height / 2;
+  const k = next / chartPan.scale;
+  chartPan.x = cx - (cx - chartPan.x) * k;
+  chartPan.y = cy - (cy - chartPan.y) * k;
+  chartPan.scale = next;
+  if (next === 1) {
+    chartPan.x = 0;
+    chartPan.y = 0;
+  }
+  paintChartPan();
+}
+
+function openChart(chart, page) {
+  if (!els.chartSheet || !els.chartZoom || !chart) return;
+  resetChartPan();
+  els.chartZoom.src = chart;
+  els.chartSheet.dataset.page = page || "https://typhoon.nmc.cn/web.html";
+  els.chartSheet.hidden = false;
+}
+
+function closeChart() {
+  if (!els.chartSheet) return;
+  els.chartSheet.hidden = true;
+  resetChartPan();
+  if (els.chartZoom) els.chartZoom.removeAttribute("src");
 }
 
 function hideUpdateSheet() {
@@ -372,7 +431,7 @@ function fxNode(className, style = {}) {
 }
 
 function applyWeatherFx(text) {
-  const layer = els.weatherFx;
+  const layer = els.fxLayer;
   if (!layer) return;
   const mood = text ? weatherMood(text) : "";
   if (layer.dataset.mood === mood) return;
@@ -383,12 +442,18 @@ function applyWeatherFx(text) {
   if (mood === "sun") {
     layer.append(fxNode("fx-sun"), fxNode("fx-shine"), fxNode("fx-shine is-late"));
   }
-  if (mood === "cloud" || mood === "haze") {
+  if (mood === "cloud") {
     layer.append(
-      fxNode("fx-cloud", { top: "2%", left: "-20%" }),
-      fxNode("fx-cloud is-late", { top: "24%", left: "18%" }),
-      fxNode("fx-cloud", { top: "52%", left: "-12%" }),
-      fxNode("fx-cloud is-late", { top: "70%", left: "28%" }),
+      fxNode("fx-puff", { top: "2%", left: "-6%" }),
+      fxNode("fx-puff is-mid", { top: "8%", left: "42%" }),
+      fxNode("fx-puff is-small", { top: "4%", left: "68%" }),
+    );
+  }
+  if (mood === "haze") {
+    layer.append(
+      fxNode("fx-haze", { top: "8%", left: "-16%" }),
+      fxNode("fx-haze is-late", { top: "42%", left: "10%" }),
+      fxNode("fx-haze", { top: "70%", left: "-8%" }),
     );
   }
   if (mood === "rain" || mood === "thunder") {
@@ -401,16 +466,27 @@ function applyWeatherFx(text) {
     }
   }
   if (mood === "thunder") {
-    layer.append(fxNode("fx-flash"));
-  }
-  if (mood === "snow" || mood === "fog") {
     layer.append(
-      fxNode("fx-fog", { top: "0%", left: "-20%" }),
-      fxNode("fx-fog is-late", { top: "38%", left: "8%" }),
-      fxNode("fx-fog", { top: "68%", left: "-8%" }),
+      fxNode("fx-storm"),
+      fxNode("fx-flash"),
+      fxNode("fx-flash is-late"),
+      fxNode("fx-bolt", { left: "26%" }),
+      fxNode("fx-bolt is-late", { left: "58%" }),
+    );
+  }
+  if (mood === "fog") {
+    layer.append(
+      fxNode("fx-veil"),
+      fxNode("fx-fog-band", { top: "8%" }),
+      fxNode("fx-fog-band is-mid", { top: "38%" }),
+      fxNode("fx-fog-band is-late", { top: "66%" }),
     );
   }
   if (mood === "snow") {
+    layer.append(
+      fxNode("fx-fog-band", { top: "0%" }),
+      fxNode("fx-fog-band is-late", { top: "58%" }),
+    );
     for (let i = 0; i < 18; i += 1) {
       layer.append(fxNode("fx-flake", {
         left: `${3 + ((i * 5) % 94)}%`,
@@ -424,7 +500,7 @@ function applyWeatherFx(text) {
 function renderWeather(target, data, name) {
   target.hidden = false;
   target.textContent = `${name} ${data.temp}° ${data.text}`;
-  applyWeatherFx(data.text);
+  applyWeatherFx(weatherFxText(data));
 }
 
 function renderAlerts(alerts) {
@@ -455,104 +531,65 @@ function renderAlerts(alerts) {
   }
 }
 
-function svgNode(name, attrs) {
-  const node = document.createElementNS("http://www.w3.org/2000/svg", name);
-  for (const [key, value] of Object.entries(attrs)) node.setAttribute(key, value);
-  return node;
+function emptyTyphoon() {
+  return { storms: [], chart: "", page: "" };
 }
 
-function trackPoints(storm) {
-  const to = (item) => `${item.x.toFixed(1)},${item.y.toFixed(1)}`;
-  return {
-    past: storm.plot.past.map(to).join(" "),
-    forecast: storm.plot.forecast.map(to).join(" "),
-  };
-}
-
-function projectStorm(storm) {
-  const all = [...storm.past, ...storm.forecast];
-  if (all.length < 2) return null;
-  const pad = 1.2;
-  const minLon = Math.min(...all.map((p) => p.lon)) - pad;
-  const maxLon = Math.max(...all.map((p) => p.lon)) + pad;
-  const minLat = Math.min(...all.map((p) => p.lat)) - pad;
-  const maxLat = Math.max(...all.map((p) => p.lat)) + pad;
-  const w = 280;
-  const h = 72;
-  const sx = w / Math.max(maxLon - minLon, 0.01);
-  const sy = h / Math.max(maxLat - minLat, 0.01);
-  const xy = (p) => ({ x: (p.lon - minLon) * sx, y: (maxLat - p.lat) * sy });
-  const current = storm.past[storm.past.length - 1];
-  const here = xy(current);
-  return {
-    past: storm.past.map(xy),
-    forecast: [here, ...storm.forecast.map(xy)],
-    current: here,
-    rings: (storm.ringKm || []).map((km) => ({
-      cx: here.x,
-      cy: here.y,
-      rx: (km / 111) * sx,
-      ry: (km / 111) * sy,
-    })),
-  };
-}
-
-function renderTrack(storm) {
-  const plot = projectStorm(storm);
-  if (!plot) return null;
-  const svg = svgNode("svg", {
-    class: "typhoon-map",
-    viewBox: "0 0 280 72",
-    "aria-hidden": "true",
+function renderChart(chart, page) {
+  if (!chart) return null;
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "typhoon-chart";
+  btn.title = "放大查看台风路径图";
+  const img = document.createElement("img");
+  img.alt = "中央气象台台风路径图";
+  img.src = chart;
+  img.addEventListener("error", () => {
+    btn.remove();
+    applyWindowSize();
   });
-  for (const ring of plot.rings) {
-    svg.append(svgNode("ellipse", {
-      class: "typhoon-ring-map",
-      cx: ring.cx.toFixed(1),
-      cy: ring.cy.toFixed(1),
-      rx: Math.max(ring.rx, 2).toFixed(1),
-      ry: Math.max(ring.ry, 2).toFixed(1),
-    }));
-  }
-  const lines = trackPoints({ plot });
-  if (lines.past) svg.append(svgNode("polyline", { class: "typhoon-path", points: lines.past }));
-  if (lines.forecast) svg.append(svgNode("polyline", { class: "typhoon-path is-forecast", points: lines.forecast }));
-  svg.append(svgNode("circle", {
-    class: "typhoon-dot",
-    cx: plot.current.x.toFixed(1),
-    cy: plot.current.y.toFixed(1),
-    r: "3.2",
-  }));
-  return svg;
+  const lens = document.createElement("span");
+  lens.className = "typhoon-lens";
+  lens.setAttribute("aria-hidden", "true");
+  lens.innerHTML = '<svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.2"/><path d="m16 16 5 5"/></svg>';
+  btn.append(img, lens);
+  btn.addEventListener("click", () => openChart(chart, page));
+  return btn;
 }
 
-function renderTyphoons(storms) {
+function renderTyphoons(report) {
+  const storms = report?.storms || [];
   els.typhoon.replaceChildren();
-  if (!storms?.length) {
+  if (!storms.length) {
     els.typhoon.hidden = true;
     return;
   }
   els.typhoon.hidden = false;
-  for (const storm of storms) {
+  storms.forEach((storm, index) => {
     const row = document.createElement("div");
     row.className = `typhoon-item is-${storm.tone || "blue"}`;
+    const copy = document.createElement("div");
+    copy.className = "typhoon-copy";
     const title = document.createElement("p");
     title.className = "typhoon-title";
     title.textContent = storm.title;
     const meta = document.createElement("p");
     meta.className = "typhoon-meta";
-    meta.textContent = storm.meta;
-    row.append(title, meta);
+    meta.textContent = storm.place ? `${storm.place} · ${storm.meta}` : storm.meta;
+    copy.append(title, meta);
     if (storm.rings) {
       const rings = document.createElement("p");
       rings.className = "typhoon-rings";
       rings.textContent = storm.rings;
-      row.append(rings);
+      copy.append(rings);
     }
-    const map = renderTrack(storm);
-    if (map) row.append(map);
+    row.append(copy);
+    if (index === 0) {
+      const chart = renderChart(report.chart, report.page);
+      if (chart) row.append(chart);
+    }
     els.typhoon.append(row);
-  }
+  });
 }
 
 async function refreshWeather() {
@@ -562,8 +599,15 @@ async function refreshWeather() {
   els.weatherAlert.hidden = true;
   els.typhoon.hidden = true;
   state.weatherOutlook = [];
-  const stormsP = s.weatherPos === "off" ? Promise.resolve([]) : fetchTyphoons().catch(() => []);
-  if (s.weatherPos === "off" || !s.weather) {
+  const stormsP = s.weatherPos === "off" ? Promise.resolve(emptyTyphoon()) : fetchTyphoons().catch(() => emptyTyphoon());
+  if (s.weatherPos === "off") {
+    applyWeatherFx("");
+    renderTyphoons(emptyTyphoon());
+    renderDock();
+    await applyWindowSize();
+    return;
+  }
+  if (!s.weather) {
     applyWeatherFx("");
     renderTyphoons(await stormsP);
     renderDock();
@@ -742,6 +786,7 @@ async function searchCity() {
         state.settings.weather = places[Number(btn.dataset.index)];
         persist();
         applyAppearance();
+        els.place.value = "";
         els.placeList.innerHTML = "";
         await refreshWeather();
       });
@@ -758,13 +803,52 @@ function bindEvents() {
   document.getElementById("close-btn").addEventListener("click", hideWindow);
   document.getElementById("settings-btn").addEventListener("click", openSettings);
   document.getElementById("settings-close").addEventListener("click", closeSettings);
+  document.getElementById("chart-close")?.addEventListener("click", closeChart);
+  els.chartSheet?.addEventListener("click", (event) => {
+    if (event.target === els.chartSheet) closeChart();
+  });
+  els.chartView?.addEventListener("wheel", (event) => {
+    event.preventDefault();
+    zoomChart(event);
+  }, { passive: false });
+  els.chartView?.addEventListener("dblclick", resetChartPan);
+  els.chartView?.addEventListener("pointerdown", (event) => {
+    if (chartPan.scale <= 1) return;
+    chartPan.drag = { x: event.clientX - chartPan.x, y: event.clientY - chartPan.y };
+    els.chartView.setPointerCapture(event.pointerId);
+    paintChartPan();
+  });
+  els.chartView?.addEventListener("pointermove", (event) => {
+    if (!chartPan.drag) return;
+    chartPan.x = event.clientX - chartPan.drag.x;
+    chartPan.y = event.clientY - chartPan.drag.y;
+    paintChartPan();
+  });
+  els.chartView?.addEventListener("pointerup", () => {
+    chartPan.drag = null;
+    paintChartPan();
+  });
+  els.chartView?.addEventListener("pointercancel", () => {
+    chartPan.drag = null;
+    paintChartPan();
+  });
+  document.getElementById("chart-site")?.addEventListener("click", () => {
+    window.open(els.chartSheet?.dataset.page || "https://typhoon.nmc.cn/web.html", "_blank", "noopener");
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.key !== "Escape") return;
+    if (els.chartSheet && !els.chartSheet.hidden) closeChart();
+  });
   els.checkUpdate?.addEventListener("click", () => checkForUpdate(true));
   els.updateClose?.addEventListener("click", hideUpdateSheet);
   els.updateLater?.addEventListener("click", skipUpdate);
   els.updateNow?.addEventListener("click", startUpdate);
-  document.getElementById("search-place").addEventListener("click", searchCity);
-  els.place.addEventListener("keydown", (event) => {
-    if (event.key === "Enter") searchCity();
+  document.getElementById("place-form")?.addEventListener("submit", (event) => {
+    event.preventDefault();
+    searchCity();
+  });
+  els.place.addEventListener("focus", () => {
+    els.place.removeAttribute("readonly");
   });
   els.grid.addEventListener("click", (event) => {
     const btn = event.target.closest("button[data-day]");
@@ -773,7 +857,7 @@ function bindEvents() {
   });
   document.addEventListener("contextmenu", (event) => {
     event.preventDefault();
-    if (event.target.closest(".sheet, #update-sheet")) return;
+    if (event.target.closest(".sheet")) return;
     refreshCtxLabels();
     showCtx(event.clientX, event.clientY);
   });
