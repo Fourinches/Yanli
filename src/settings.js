@@ -37,10 +37,12 @@ export const DEFAULTS = {
   theme: "frost",
   opacity: 86,
   font: "yahei",
-  layer: "desktop",
+  layer: "normal",
   autostart: true,
   weatherPos: "top",
   weather: null,
+  x: null,
+  y: null,
 };
 
 export function hasSavedSettings() {

@@ -140,83 +140,106 @@ select:focus-visible {
 .fx-cloud,
 .fx-fog,
 .fx-drop,
+.fx-flake,
 .fx-flash {
   position: absolute;
   pointer-events: none;
 }
 
 .fx-sun {
-  top: -28px;
-  right: 18px;
-  width: 96px;
-  height: 96px;
+  top: -70px;
+  right: -20px;
+  width: 220px;
+  height: 220px;
   border-radius: 50%;
-  background: radial-gradient(circle, rgba(251, 191, 36, 0.38), transparent 68%);
-  animation: fx-pulse 4.8s ease-in-out infinite;
+  background: radial-gradient(circle, rgba(251, 191, 36, 0.55), rgba(251, 191, 36, 0.18) 45%, transparent 72%);
+  animation: fx-pulse 4.2s ease-in-out infinite;
 }
 
 .fx-shine {
-  top: 10px;
-  right: 42px;
-  width: 46px;
-  height: 46px;
+  top: 8px;
+  right: 36px;
+  width: 90px;
+  height: 90px;
   border-radius: 50%;
-  background: radial-gradient(circle, rgba(254, 243, 199, 0.45), transparent 70%);
-  animation: fx-pulse 3.6s ease-in-out infinite 0.8s;
+  background: radial-gradient(circle, rgba(254, 243, 199, 0.7), transparent 70%);
+  animation: fx-pulse 3.2s ease-in-out infinite 0.6s;
+}
+
+.fx-shine.is-late {
+  top: 120px;
+  right: 120px;
+  width: 54px;
+  height: 54px;
+  animation-delay: 1.4s;
 }
 
 .fx-cloud,
 .fx-fog {
-  width: 58%;
-  height: 28%;
+  width: 78%;
+  height: 38%;
   border-radius: 50%;
-  filter: blur(22px);
-  background: rgba(226, 232, 240, 0.28);
-  animation: fx-drift 22s ease-in-out infinite alternate;
+  filter: blur(18px);
+  background: rgba(226, 232, 240, 0.42);
+  animation: fx-drift 16s ease-in-out infinite alternate;
 }
 
-.fx-fog { height: 36%; filter: blur(28px); background: rgba(226, 232, 240, 0.34); }
+.fx-fog { height: 48%; filter: blur(24px); background: rgba(226, 232, 240, 0.5); }
 .fx-cloud.is-late,
-.fx-fog.is-late { animation-delay: -9s; width: 48%; }
+.fx-fog.is-late { animation-delay: -7s; width: 70%; }
 
 .fx-drop {
-  top: -18px;
-  width: 1px;
-  height: 13px;
-  background: linear-gradient(to bottom, transparent, rgba(100, 116, 139, 0.42));
+  top: -24px;
+  width: 2px;
+  height: 22px;
+  background: linear-gradient(to bottom, transparent, rgba(71, 85, 105, 0.62));
   animation: fx-fall linear infinite;
+}
+
+.fx-flake {
+  top: -12px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: rgba(248, 250, 252, 0.85);
+  box-shadow: 0 0 6px rgba(248, 250, 252, 0.7);
+  animation: fx-flake linear infinite;
 }
 
 .fx-flash {
   inset: 0;
-  background: rgba(255, 255, 255, 0.28);
+  background: rgba(255, 255, 255, 0.42);
   opacity: 0;
-  animation: fx-lightning 8s step-end infinite;
+  animation: fx-lightning 5.5s step-end infinite;
 }
 
-[data-theme="night"] .fx-sun { background: radial-gradient(circle, rgba(253, 224, 71, 0.22), transparent 68%); }
+[data-theme="night"] .fx-sun { background: radial-gradient(circle, rgba(253, 224, 71, 0.36), transparent 70%); }
 [data-theme="night"] .fx-cloud,
-[data-theme="night"] .fx-fog { background: rgba(148, 163, 184, 0.16); }
-[data-theme="night"] .fx-drop { background: linear-gradient(to bottom, transparent, rgba(191, 219, 254, 0.38)); }
+[data-theme="night"] .fx-fog { background: rgba(148, 163, 184, 0.28); }
+[data-theme="night"] .fx-drop { background: linear-gradient(to bottom, transparent, rgba(191, 219, 254, 0.55)); }
 
 @keyframes fx-pulse {
-  0%, 100% { opacity: 0.55; transform: scale(1); }
-  50% { opacity: 0.95; transform: scale(1.06); }
+  0%, 100% { opacity: 0.65; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.12); }
 }
 
 @keyframes fx-drift {
   from { transform: translateX(0); }
-  to { transform: translateX(18%); }
+  to { transform: translateX(26%); }
 }
 
 @keyframes fx-fall {
-  to { transform: translate3d(-10px, 680px, 0); }
+  to { transform: translate3d(-16px, 720px, 0); }
+}
+
+@keyframes fx-flake {
+  to { transform: translate3d(18px, 720px, 0); }
 }
 
 @keyframes fx-lightning {
-  0%, 91%, 94%, 97%, 100% { opacity: 0; }
-  92% { opacity: 0.32; }
-  95% { opacity: 0.16; }
+  0%, 86%, 90%, 94%, 100% { opacity: 0; }
+  87% { opacity: 0.5; }
+  91% { opacity: 0.22; }
 }
 
 .topbar,

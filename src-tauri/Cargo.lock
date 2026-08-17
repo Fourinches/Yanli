@@ -4774,7 +4774,7 @@ dependencies = [
 
 [[package]]
 name = "yanli"
-version = "1.2.13"
+version = "1.2.14"
 dependencies = [
  "reqwest 0.12.28",
  "serde",

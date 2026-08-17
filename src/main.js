@@ -344,6 +344,7 @@ function showCtx(x, y) {
 }
 
 async function hideWindow() {
+  await saveWindowPos();
   try {
     await invoke("hide_to_tray");
   } catch {
@@ -352,6 +353,7 @@ async function hideWindow() {
 }
 
 async function quitApp() {
+  await saveWindowPos();
   try {
     await invoke("quit_app");
   } catch {
@@ -376,20 +378,22 @@ function applyWeatherFx(text) {
   if (!mood) return;
 
   if (mood === "sun") {
-    layer.append(fxNode("fx-sun"), fxNode("fx-shine"));
+    layer.append(fxNode("fx-sun"), fxNode("fx-shine"), fxNode("fx-shine is-late"));
   }
   if (mood === "cloud" || mood === "haze") {
     layer.append(
-      fxNode("fx-cloud", { top: "8%", left: "-10%" }),
-      fxNode("fx-cloud is-late", { top: "42%", left: "35%" }),
+      fxNode("fx-cloud", { top: "2%", left: "-20%" }),
+      fxNode("fx-cloud is-late", { top: "24%", left: "18%" }),
+      fxNode("fx-cloud", { top: "52%", left: "-12%" }),
+      fxNode("fx-cloud is-late", { top: "70%", left: "28%" }),
     );
   }
   if (mood === "rain" || mood === "thunder") {
-    for (let i = 0; i < 14; i += 1) {
+    for (let i = 0; i < 36; i += 1) {
       layer.append(fxNode("fx-drop", {
-        left: `${4 + ((i * 7) % 92)}%`,
-        animationDelay: `${(i % 7) * 0.18}s`,
-        animationDuration: `${0.75 + (i % 5) * 0.12}s`,
+        left: `${2 + ((i * 3) % 96)}%`,
+        animationDelay: `${(i % 9) * 0.1}s`,
+        animationDuration: `${0.5 + (i % 6) * 0.08}s`,
       }));
     }
   }
@@ -398,9 +402,19 @@ function applyWeatherFx(text) {
   }
   if (mood === "snow" || mood === "fog") {
     layer.append(
-      fxNode("fx-fog", { top: "10%", left: "-15%" }),
-      fxNode("fx-fog is-late", { top: "55%", left: "20%" }),
+      fxNode("fx-fog", { top: "0%", left: "-20%" }),
+      fxNode("fx-fog is-late", { top: "38%", left: "8%" }),
+      fxNode("fx-fog", { top: "68%", left: "-8%" }),
     );
+  }
+  if (mood === "snow") {
+    for (let i = 0; i < 18; i += 1) {
+      layer.append(fxNode("fx-flake", {
+        left: `${3 + ((i * 5) % 94)}%`,
+        animationDelay: `${(i % 8) * 0.35}s`,
+        animationDuration: `${3.6 + (i % 5) * 0.5}s`,
+      }));
+    }
   }
 }
 
@@ -485,21 +499,42 @@ function watchCalendarDay() {
   refreshWeather();
 }
 
-async function restorePosition() {
+function readSavedPos() {
+  if (Number.isFinite(state.settings.x) && Number.isFinite(state.settings.y)) {
+    return { x: state.settings.x, y: state.settings.y };
+  }
   const raw = localStorage.getItem(POS_KEY);
-  if (!raw) return;
+  if (!raw) return null;
   try {
     const { x, y } = JSON.parse(raw);
-    await invoke("move_window", { x, y });
+    return Number.isFinite(x) && Number.isFinite(y) ? { x, y } : null;
   } catch {
     localStorage.removeItem(POS_KEY);
+    return null;
   }
+}
+
+async function restorePosition() {
+  const pos = readSavedPos();
+  if (!pos) return;
+  try {
+    await invoke("move_window", pos);
+  } catch {
+    // 窗口未就绪时保留记忆，下次再恢复
+  }
+}
+
+function rememberPos(x, y) {
+  state.settings.x = x;
+  state.settings.y = y;
+  persist();
+  localStorage.setItem(POS_KEY, JSON.stringify({ x, y }));
 }
 
 async function saveWindowPos() {
   try {
     const pos = await getCurrentWindow().outerPosition();
-    localStorage.setItem(POS_KEY, JSON.stringify({ x: pos.x, y: pos.y }));
+    rememberPos(pos.x, pos.y);
   } catch {
     // 浏览器预览
   }
@@ -541,7 +576,7 @@ function bindDrag(el) {
     const onUp = () => {
       window.removeEventListener("mousemove", onMove);
       window.removeEventListener("mouseup", onUp);
-      localStorage.setItem(POS_KEY, JSON.stringify(last));
+      rememberPos(last.x, last.y);
     };
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", onUp);
@@ -700,12 +735,17 @@ bindEvents();
 renderWeekdays();
 applyAppearance();
 renderMonth();
-applyWindowChrome();
 applyAutostart();
 refreshCtxLabels();
-restorePosition();
 refreshWeather();
 bindNativeEvents();
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) saveWindowPos();
+});
+(async () => {
+  await applyWindowChrome();
+  await restorePosition();
+})();
 setTimeout(() => checkForUpdate(false), 2500);
 syncHolidays()
   .then(() => renderMonth())
