@@ -21,7 +21,7 @@ export const FONTS = [
 ];
 
 export const LAYERS = [
-  { id: "desktop", label: "贴在壁纸上" },
+  { id: "desktop", label: "贴桌面" },
   { id: "normal", label: "普通窗口" },
   { id: "top", label: "浮在最前" },
 ];

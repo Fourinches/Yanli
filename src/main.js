@@ -81,6 +81,14 @@ function fillSelect(select, items, current) {
     .join("");
 }
 
+function syncDragLock() {
+  const locked = state.settings.layer === "desktop";
+  document.querySelectorAll(".js-drag").forEach((el) => {
+    if (locked) el.removeAttribute("data-tauri-drag-region");
+    else el.setAttribute("data-tauri-drag-region", "");
+  });
+}
+
 function applyAppearance() {
   const s = state.settings;
   els.body.dataset.theme = s.theme;
@@ -92,21 +100,30 @@ function applyAppearance() {
   els.opacityVal.textContent = `${s.opacity}%`;
   els.autostart.checked = Boolean(s.autostart);
   els.placeNow.textContent = s.weather?.name || "尚未选择位置";
+  syncDragLock();
   refreshCtxLabels();
 }
 
-async function applyWindowChrome() {
+async function applyWindowSize() {
   const size = SIZES[state.settings.size] || SIZES.m;
   try {
     await invoke("resize_window", { width: size.width, height: size.height });
   } catch {
     // 浏览器预览
   }
+}
+
+async function applyWindowLayer() {
   try {
     await invoke("set_window_layer", { layer: state.settings.layer });
   } catch {
     // ignore
   }
+}
+
+async function applyWindowChrome() {
+  await applyWindowSize();
+  await applyWindowLayer();
 }
 
 async function applyAutostart() {
@@ -136,7 +153,7 @@ async function applyAutostart() {
 function refreshCtxLabels() {
   if (els.ctxDesktop) {
     els.ctxDesktop.textContent =
-      state.settings.layer === "desktop" ? "取消贴桌面" : "贴在壁纸上";
+      state.settings.layer === "desktop" ? "取消贴桌面" : "贴桌面";
   }
   if (els.ctxAutostart) {
     els.ctxAutostart.textContent = state.settings.autostart
@@ -353,10 +370,6 @@ async function restorePosition() {
   }
 }
 
-function isWindows() {
-  return navigator.userAgent.includes("Windows");
-}
-
 async function saveWindowPos() {
   try {
     const pos = await getCurrentWindow().outerPosition();
@@ -368,18 +381,16 @@ async function saveWindowPos() {
 
 function bindDrag(el) {
   el.addEventListener("mousedown", async (event) => {
+    if (state.settings.layer === "desktop") return;
     if (event.button !== 0) return;
     if (event.target.closest("button, input, select, a, .weather")) return;
 
-    const wallpaperChild = isWindows() && state.settings.layer === "desktop";
-    if (!wallpaperChild) {
-      try {
-        window.addEventListener("mouseup", saveWindowPos, { once: true });
-        await getCurrentWindow().startDragging();
-        return;
-      } catch {
-        // 再走手动拖动
-      }
+    try {
+      window.addEventListener("mouseup", saveWindowPos, { once: true });
+      await getCurrentWindow().startDragging();
+      return;
+    } catch {
+      // 再走手动拖动
     }
 
     const start = { x: event.screenX, y: event.screenY };
@@ -422,7 +433,8 @@ function bindSettingsForm() {
     state.settings[key] = value;
     persist();
     applyAppearance();
-    if (key === "size" || key === "layer") await applyWindowChrome();
+    if (key === "size") await applyWindowSize();
+    if (key === "layer") await applyWindowLayer();
     if (key === "autostart") await applyAutostart();
     if (key === "size" || key === "weatherPos") await refreshWeather();
   };
@@ -505,7 +517,7 @@ function bindEvents() {
       persist();
       els.layer.value = state.settings.layer;
       applyAppearance();
-      await applyWindowChrome();
+      await applyWindowLayer();
     }
     if (act === "autostart") {
       state.settings.autostart = !state.settings.autostart;

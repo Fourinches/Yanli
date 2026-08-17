@@ -23,7 +23,6 @@ fn remember_layer(layer: &str) {
     }
 }
 
-#[cfg(target_os = "macos")]
 fn current_layer() -> String {
     CURRENT_LAYER
         .lock()
@@ -193,8 +192,9 @@ pub fn run() {
                         if let Ok(win) = main_window(app) {
                             let _ = apply_native_layer(&win, "desktop");
                             let _ = app.emit("yanli://layer", "desktop");
+                            let _ = win.show();
+                            let _ = win.unminimize();
                         }
-                        show_main(app);
                     }
                     "hide" => {
                         let _ = hide_to_tray(app.clone());
@@ -220,6 +220,8 @@ pub fn run() {
 
             if let Some(win) = app.get_webview_window("main") {
                 let _ = win.set_background_color(Some(tauri::window::Color(0, 0, 0, 0)));
+                #[cfg(windows)]
+                desktop::clear_system_backdrop(&win);
                 let handle = app.handle().clone();
                 win.on_window_event(move |event| {
                     match event {
@@ -230,10 +232,10 @@ pub fn run() {
                             }
                         }
                         WindowEvent::Focused(true) => {
-                            #[cfg(target_os = "macos")]
+                            #[cfg(windows)]
                             if current_layer() == "desktop" {
                                 if let Some(main) = handle.get_webview_window("main") {
-                                    let _ = apply_native_layer(&main, "desktop");
+                                    desktop::keep_bottom(&main);
                                 }
                             }
                         }

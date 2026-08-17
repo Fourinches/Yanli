@@ -1,33 +1,34 @@
 #![cfg(windows)]
 
+use std::sync::Mutex;
+use std::time::{Duration, Instant};
+
 use tauri::{LogicalSize, WebviewWindow};
-use windows::Win32::Foundation::{HWND, LPARAM, POINT, WPARAM};
+use windows::Win32::Foundation::{HWND, POINT};
+use windows::Win32::Graphics::Dwm::{
+    DwmSetWindowAttribute, DWMWA_SYSTEMBACKDROP_TYPE, DWMWA_WINDOW_CORNER_PREFERENCE,
+    DWMSBT_NONE, DWMWCP_DONOTROUND,
+};
 use windows::Win32::Graphics::Gdi::ScreenToClient;
 use windows::Win32::UI::WindowsAndMessaging::{
-    EnumWindows, FindWindowExW, FindWindowW, GetParent, SendMessageTimeoutW, SetParent,
-    SetWindowPos, HWND_BOTTOM, HWND_NOTOPMOST, HWND_TOPMOST, SMTO_NORMAL, SWP_NOACTIVATE,
-    SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER, SWP_SHOWWINDOW,
+    GetParent, SetParent, SetWindowPos, HWND_BOTTOM, HWND_NOTOPMOST, HWND_TOPMOST,
+    SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER,
 };
-use windows::core::BOOL;
-use windows::core::w;
 
-struct FindState {
-    worker: HWND,
+static LAST_SINK: Mutex<Option<Instant>> = Mutex::new(None);
+
+fn mark_sunk() {
+    if let Ok(mut last) = LAST_SINK.lock() {
+        *last = Some(Instant::now());
+    }
 }
 
-unsafe extern "system" fn find_wallpaper_worker(hwnd: HWND, lparam: LPARAM) -> BOOL {
-    let state = &mut *(lparam.0 as *mut FindState);
-    if let Ok(def_view) = FindWindowExW(Some(hwnd), None, w!("SHELLDLL_DefView"), None) {
-        if !def_view.is_invalid() {
-            if let Ok(worker) = FindWindowExW(None, Some(hwnd), w!("WorkerW"), None) {
-                if !worker.is_invalid() {
-                    state.worker = worker;
-                    return BOOL(0);
-                }
-            }
-        }
-    }
-    BOOL(1)
+fn recently_sunk() -> bool {
+    LAST_SINK
+        .lock()
+        .ok()
+        .and_then(|last| *last)
+        .is_some_and(|prev| prev.elapsed() < Duration::from_millis(400))
 }
 
 fn window_hwnd(win: &WebviewWindow) -> Result<HWND, String> {
@@ -35,98 +36,74 @@ fn window_hwnd(win: &WebviewWindow) -> Result<HWND, String> {
     Ok(HWND(hwnd.0))
 }
 
-unsafe fn wallpaper_worker() -> Result<HWND, String> {
-    let progman = FindWindowW(w!("Progman"), None).map_err(|e| e.to_string())?;
-    let mut result = 0usize;
-    let _ = SendMessageTimeoutW(
-        progman,
-        0x052C,
-        WPARAM(0xD),
-        LPARAM(0x1),
-        SMTO_NORMAL,
-        1000,
-        Some(&mut result),
-    );
-
-    let mut state = FindState {
-        worker: HWND::default(),
-    };
-    let _ = EnumWindows(
-        Some(find_wallpaper_worker),
-        LPARAM(&mut state as *mut FindState as isize),
-    );
-    if !state.worker.is_invalid() {
-        return Ok(state.worker);
-    }
-    if let Ok(worker) = FindWindowExW(Some(progman), None, w!("WorkerW"), None) {
-        if !worker.is_invalid() {
-            return Ok(worker);
+pub fn clear_system_backdrop(win: &WebviewWindow) {
+    if let Ok(hwnd) = window_hwnd(win) {
+        unsafe {
+            let backdrop = DWMSBT_NONE;
+            let _ = DwmSetWindowAttribute(
+                hwnd,
+                DWMWA_SYSTEMBACKDROP_TYPE,
+                &backdrop as *const _ as *const std::ffi::c_void,
+                std::mem::size_of_val(&backdrop) as u32,
+            );
+            let corners = DWMWCP_DONOTROUND;
+            let _ = DwmSetWindowAttribute(
+                hwnd,
+                DWMWA_WINDOW_CORNER_PREFERENCE,
+                &corners as *const _ as *const std::ffi::c_void,
+                std::mem::size_of_val(&corners) as u32,
+            );
         }
     }
-    Err("找不到桌面壁纸层".into())
 }
 
-pub fn attach_to_wallpaper(win: &WebviewWindow) -> Result<(), String> {
-    let pos = win.outer_position().ok();
+fn send_to_bottom(win: &WebviewWindow) -> Result<(), String> {
     unsafe {
         let hwnd = window_hwnd(win)?;
-        let worker = wallpaper_worker()?;
-        SetParent(hwnd, Some(worker)).map_err(|e| e.to_string())?;
-        let _ = SetWindowPos(
+        SetWindowPos(
             hwnd,
             Some(HWND_BOTTOM),
             0,
             0,
             0,
             0,
-            SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW,
-        );
-    }
-    let _ = win.set_always_on_top(false);
-    if let Some(p) = pos {
-        let _ = move_window(win, p.x, p.y);
+            SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
+        )
+        .map_err(|e| e.to_string())?;
     }
     Ok(())
+}
+
+pub fn keep_bottom(win: &WebviewWindow) {
+    if recently_sunk() {
+        return;
+    }
+    mark_sunk();
+    let _ = send_to_bottom(win);
 }
 
 pub fn detach_from_wallpaper(win: &WebviewWindow) -> Result<(), String> {
     unsafe {
         let hwnd = window_hwnd(win)?;
-        SetParent(hwnd, None).map_err(|e| e.to_string())?;
-        let _ = SetWindowPos(
-            hwnd,
-            Some(HWND_NOTOPMOST),
-            0,
-            0,
-            0,
-            0,
-            SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW,
-        );
+        if let Ok(parent) = GetParent(hwnd) {
+            if !parent.is_invalid() {
+                SetParent(hwnd, None).map_err(|e| e.to_string())?;
+            }
+        }
     }
     Ok(())
 }
 
 pub fn apply_layer(win: &WebviewWindow, layer: &str) -> Result<(), String> {
+    clear_system_backdrop(win);
+    let _ = detach_from_wallpaper(win);
     match layer {
         "desktop" => {
             let _ = win.set_always_on_top(false);
-            if attach_to_wallpaper(win).is_err() {
-                unsafe {
-                    let hwnd = window_hwnd(win)?;
-                    let _ = SetWindowPos(
-                        hwnd,
-                        Some(HWND_BOTTOM),
-                        0,
-                        0,
-                        0,
-                        0,
-                        SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW,
-                    );
-                }
-            }
+            mark_sunk();
+            send_to_bottom(win)?;
         }
         "top" => {
-            let _ = detach_from_wallpaper(win);
             let _ = win.set_always_on_top(true);
             unsafe {
                 let hwnd = window_hwnd(win)?;
@@ -137,13 +114,24 @@ pub fn apply_layer(win: &WebviewWindow, layer: &str) -> Result<(), String> {
                     0,
                     0,
                     0,
-                    SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW,
+                    SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
                 );
             }
         }
         _ => {
-            let _ = detach_from_wallpaper(win);
             let _ = win.set_always_on_top(false);
+            unsafe {
+                let hwnd = window_hwnd(win)?;
+                let _ = SetWindowPos(
+                    hwnd,
+                    Some(HWND_NOTOPMOST),
+                    0,
+                    0,
+                    0,
+                    0,
+                    SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
+                );
+            }
         }
     }
     Ok(())
@@ -165,7 +153,7 @@ pub fn move_window(win: &WebviewWindow, x: i32, y: i32) -> Result<(), String> {
             point.y,
             0,
             0,
-            SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_SHOWWINDOW,
+            SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE,
         )
         .map_err(|e| e.to_string())?;
     }

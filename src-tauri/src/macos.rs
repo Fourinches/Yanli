@@ -3,7 +3,6 @@
 use tauri::WebviewWindow;
 
 pub fn apply_layer(win: &WebviewWindow, layer: &str) -> Result<(), String> {
-    let _ = win.set_ignore_cursor_events(false);
     match layer {
         "desktop" => {
             let _ = win.set_always_on_top(false);

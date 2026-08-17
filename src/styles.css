@@ -13,7 +13,7 @@
   --today: #0f172a;
   --today-fg: #f8fafc;
   --ring: #2563eb;
-  --shadow: 0 18px 50px rgba(15, 23, 42, 0.16);
+  --shadow: 0 6px 16px rgba(15, 23, 42, 0.1);
 }
 
 [data-theme="night"] {
@@ -30,7 +30,7 @@
   --today: #eef2ff;
   --today-fg: #0f172a;
   --ring: #818cf8;
-  --shadow: 0 18px 50px rgba(0, 0, 0, 0.35);
+  --shadow: 0 6px 16px rgba(0, 0, 0, 0.28);
 }
 
 [data-theme="paper"] {
@@ -47,7 +47,7 @@
   --today: #1c1917;
   --today-fg: #fffbeb;
   --ring: #44403c;
-  --shadow: 0 16px 40px rgba(28, 25, 23, 0.16);
+  --shadow: 0 6px 16px rgba(28, 25, 23, 0.1);
 }
 
 [data-theme="moss"] {
@@ -64,7 +64,7 @@
   --today: #14261c;
   --today-fg: #ecf5ee;
   --ring: #2f6f4e;
-  --shadow: 0 16px 40px rgba(20, 38, 28, 0.16);
+  --shadow: 0 6px 16px rgba(20, 38, 28, 0.1);
 }
 
 * { box-sizing: border-box; }
@@ -120,8 +120,6 @@ select:focus-visible {
   border-radius: 22px;
   background: rgba(var(--card), var(--card-alpha, 0.86));
   box-shadow: var(--shadow);
-  backdrop-filter: blur(18px);
-  -webkit-backdrop-filter: blur(18px);
 }
 
 .topbar,
@@ -563,14 +561,18 @@ select:focus-visible {
 }
 
 [data-layer="desktop"],
+[data-layer="desktop"] *,
 [data-layer="desktop"] button,
 [data-layer="desktop"] .day,
+[data-layer="desktop"] .icon-btn,
 [data-layer="desktop"] .topbar,
 [data-layer="desktop"] .month-block {
   cursor: default;
 }
 
-[data-layer="desktop"] .sheet button,
-[data-layer="desktop"] .ctx button {
+[data-layer="desktop"] .sheet,
+[data-layer="desktop"] .sheet *,
+[data-layer="desktop"] .ctx,
+[data-layer="desktop"] .ctx * {
   cursor: pointer;
 }
