@@ -39,21 +39,31 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force dist-out | Out-Null
-          Copy-Item src-tauri/target/release/bundle/nsis/*.exe dist-out/Yanli_1.2.3_windows_x64-setup.exe
+          Copy-Item src-tauri/target/release/bundle/nsis/*.exe dist-out/Yanli_windows_x64-setup.exe
       - name: Prepare macOS artifact
         if: runner.os == 'macOS'
         run: |
-          set -eux
-          find src-tauri/target -name '*.app' -o -name '*.dmg'
-          APP=$(find src-tauri/target -name '*.app' -type d | head -n 1)
-          DMG=$(find src-tauri/target -name '*.dmg' -type f | head -n 1)
-          test -n "$APP"
-          test -n "$DMG"
-          chmod +x "$APP/Contents/MacOS/"* || true
-          codesign --force --deep --sign - "$APP" || true
-          lipo -info "$APP/Contents/MacOS/"* || file "$APP/Contents/MacOS/"*
+          set +o pipefail
           mkdir -p dist-out
-          cp "$DMG" dist-out/Yanli_1.2.3_macos_universal.dmg
+          find src-tauri/target -name '*.dmg' -type f
+          DMG=""
+          for candidate in \
+            src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg \
+            src-tauri/target/release/bundle/dmg/*.dmg \
+            src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/*.dmg
+          do
+            if [ -f "$candidate" ]; then
+              DMG="$candidate"
+              break
+            fi
+          done
+          if [ -z "$DMG" ]; then
+            DMG=$(find src-tauri/target -name '*.dmg' -type f | head -n 1)
+          fi
+          echo "dmg=$DMG"
+          test -f "$DMG"
+          cp "$DMG" dist-out/Yanli_macos_universal.dmg
+
       - uses: actions/upload-artifact@v4
         with:
           name: yanli-${{ matrix.os }}
