@@ -326,6 +326,68 @@ select:focus-visible {
 [data-theme="night"] .alert-item.is-orange { background: rgba(234, 88, 12, 0.3); border-color: #fb923c; color: #fdba74; }
 [data-theme="night"] .alert-item.is-red { background: rgba(220, 38, 38, 0.3); border-color: #f87171; color: #fecaca; }
 
+.typhoon {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.typhoon-item {
+  padding: 8px 9px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  line-height: 1.35;
+}
+
+.typhoon-title,
+.typhoon-meta,
+.typhoon-rings { margin: 0; }
+.typhoon-title { font-size: 12px; font-weight: 650; }
+.typhoon-meta,
+.typhoon-rings { margin-top: 2px; font-size: 11px; opacity: 0.9; }
+
+.typhoon-item.is-blue { background: #dbeafe; border-color: #93c5fd; color: #1d4ed8; }
+.typhoon-item.is-yellow { background: #fde68a; border-color: #f59e0b; color: #92400e; }
+.typhoon-item.is-orange { background: #fdba74; border-color: #ea580c; color: #9a3412; }
+.typhoon-item.is-red { background: #fecaca; border-color: #ef4444; color: #991b1b; }
+
+[data-theme="night"] .typhoon-item.is-blue { background: rgba(37, 99, 235, 0.28); border-color: #60a5fa; color: #bfdbfe; }
+[data-theme="night"] .typhoon-item.is-yellow { background: rgba(250, 204, 21, 0.28); border-color: #fbbf24; color: #fde68a; }
+[data-theme="night"] .typhoon-item.is-orange { background: rgba(234, 88, 12, 0.3); border-color: #fb923c; color: #fdba74; }
+[data-theme="night"] .typhoon-item.is-red { background: rgba(220, 38, 38, 0.3); border-color: #f87171; color: #fecaca; }
+
+.typhoon-map {
+  display: block;
+  width: 100%;
+  height: 72px;
+  margin-top: 6px;
+  overflow: visible;
+}
+
+.typhoon-path {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.typhoon-path.is-forecast {
+  stroke-dasharray: 3 3;
+  opacity: 0.7;
+}
+
+.typhoon-ring-map {
+  fill: currentColor;
+  fill-opacity: 0.08;
+  stroke: currentColor;
+  stroke-width: 0.8;
+  stroke-opacity: 0.45;
+}
+
+.typhoon-dot { fill: currentColor; }
+
 .nav {
   display: flex;
   gap: 2px;
@@ -556,7 +618,8 @@ select:focus-visible {
 .sheet[hidden],
 .ctx[hidden],
 .weather[hidden],
-.alert[hidden] { display: none !important; }
+.alert[hidden],
+.typhoon[hidden] { display: none !important; }
 
 .sheet-card {
   width: min(100%, 320px);
@@ -699,6 +762,12 @@ select:focus-visible {
 [data-size="s"] .alert-item { padding: 6px 8px; }
 [data-size="s"] .alert-title { font-size: 11px; }
 [data-size="s"] .alert-tip { font-size: 10px; }
+[data-size="s"] .typhoon { gap: 5px; }
+[data-size="s"] .typhoon-item { padding: 6px 8px; }
+[data-size="s"] .typhoon-title { font-size: 11px; }
+[data-size="s"] .typhoon-meta,
+[data-size="s"] .typhoon-rings { font-size: 10px; }
+[data-size="s"] .typhoon-map { height: 56px; }
 
 [data-size="m"] .shell { padding: 10px; }
 [data-size="m"] .card { padding: 12px 12px 10px; }

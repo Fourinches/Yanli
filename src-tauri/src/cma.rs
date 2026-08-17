@@ -25,6 +25,57 @@ async fn get_json(url: &str, referer: &str, query: &[(&str, &str)]) -> Result<Va
     res.json::<Value>().await.map_err(|e| e.to_string())
 }
 
+async fn get_text(url: &str, referer: &str) -> Result<String, String> {
+    let res = client()?
+        .get(url)
+        .header("User-Agent", UA)
+        .header("Referer", referer)
+        .header("Accept", "application/json,text/javascript,*/*")
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    if !res.status().is_success() {
+        return Err(format!("气象台返回 {}", res.status()));
+    }
+    res.text().await.map_err(|e| e.to_string())
+}
+
+fn parse_jsonp(raw: &str) -> Result<Value, String> {
+    let start = raw.find('{').ok_or("台风数据无效")?;
+    let end = raw.rfind('}').ok_or("台风数据无效")?;
+    if end <= start {
+        return Err("台风数据无效".into());
+    }
+    serde_json::from_str(&raw[start..=end]).map_err(|e| e.to_string())
+}
+
+fn typhoon_id(row: &Value) -> Option<String> {
+    let id = row.get(0)?;
+    if let Some(n) = id.as_u64() {
+        return Some(n.to_string());
+    }
+    if let Some(n) = id.as_i64() {
+        return Some(n.to_string());
+    }
+    id.as_str().filter(|s| !s.is_empty() && s.chars().all(|c| c.is_ascii_digit())).map(str::to_string)
+}
+
+fn active_typhoon_ids(list: &Value) -> Vec<String> {
+    list.get("typhoonList")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter(|row| {
+            row.as_array()
+                .and_then(|cols| cols.last())
+                .and_then(Value::as_str)
+                .is_some_and(|status| status != "stop")
+        })
+        .filter_map(typhoon_id)
+        .take(3)
+        .collect()
+}
+
 fn valid_station(id: &str) -> bool {
     (3..=8).contains(&id.len()) && id.chars().all(|c| c.is_ascii_alphanumeric())
 }
@@ -65,6 +116,24 @@ pub async fn cma_get(kind: String, q: String) -> Result<Value, String> {
             )
             .await?;
             Ok(json!({ "data": enrich_places(&raw).await }))
+        }
+        "typhoon" => {
+            let referer = "https://typhoon.nmc.cn/";
+            let list = parse_jsonp(
+                &get_text(
+                    "https://typhoon.nmc.cn/weatherservice/typhoon/jsons/list_default",
+                    referer,
+                )
+                .await?,
+            )?;
+            let mut views = Vec::new();
+            for id in active_typhoon_ids(&list) {
+                let url = format!("https://typhoon.nmc.cn/weatherservice/typhoon/jsons/view_{id}");
+                if let Ok(view) = get_text(&url, referer).await.and_then(|raw| parse_jsonp(&raw)) {
+                    views.push(view);
+                }
+            }
+            Ok(json!({ "list": list, "views": views }))
         }
         _ => Err("未知请求".into()),
     }

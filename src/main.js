@@ -13,7 +13,7 @@ import {
   todayParts,
 } from "./calendar.js";
 import { syncHolidays } from "./holidays.js";
-import { fetchWeather, searchPlaces, weatherMood } from "./weather.js";
+import { fetchTyphoons, fetchWeather, searchPlaces, weatherMood } from "./weather.js";
 import {
   FONTS,
   LAYERS,
@@ -51,6 +51,7 @@ const els = {
   weatherTop: document.getElementById("weather-top"),
   weatherBottom: document.getElementById("weather-bottom"),
   weatherAlert: document.getElementById("weather-alert"),
+  typhoon: document.getElementById("typhoon"),
   weatherFx: document.getElementById("weather-fx"),
   ctxDesktop: document.getElementById("ctx-desktop"),
   ctxAutostart: document.getElementById("ctx-autostart"),
@@ -117,7 +118,9 @@ function applyAppearance() {
 
 async function applyWindowSize() {
   const size = SIZES[state.settings.size] || SIZES.m;
-  const extra = els.weatherAlert && !els.weatherAlert.hidden ? els.weatherAlert.offsetHeight : 0;
+  const extra = [els.weatherAlert, els.typhoon]
+    .filter((el) => el && !el.hidden)
+    .reduce((sum, el) => sum + el.offsetHeight, 0);
   try {
     await invoke("resize_window", { width: size.width, height: size.height + extra });
   } catch {
@@ -452,14 +455,117 @@ function renderAlerts(alerts) {
   }
 }
 
+function svgNode(name, attrs) {
+  const node = document.createElementNS("http://www.w3.org/2000/svg", name);
+  for (const [key, value] of Object.entries(attrs)) node.setAttribute(key, value);
+  return node;
+}
+
+function trackPoints(storm) {
+  const to = (item) => `${item.x.toFixed(1)},${item.y.toFixed(1)}`;
+  return {
+    past: storm.plot.past.map(to).join(" "),
+    forecast: storm.plot.forecast.map(to).join(" "),
+  };
+}
+
+function projectStorm(storm) {
+  const all = [...storm.past, ...storm.forecast];
+  if (all.length < 2) return null;
+  const pad = 1.2;
+  const minLon = Math.min(...all.map((p) => p.lon)) - pad;
+  const maxLon = Math.max(...all.map((p) => p.lon)) + pad;
+  const minLat = Math.min(...all.map((p) => p.lat)) - pad;
+  const maxLat = Math.max(...all.map((p) => p.lat)) + pad;
+  const w = 280;
+  const h = 72;
+  const sx = w / Math.max(maxLon - minLon, 0.01);
+  const sy = h / Math.max(maxLat - minLat, 0.01);
+  const xy = (p) => ({ x: (p.lon - minLon) * sx, y: (maxLat - p.lat) * sy });
+  const current = storm.past[storm.past.length - 1];
+  const here = xy(current);
+  return {
+    past: storm.past.map(xy),
+    forecast: [here, ...storm.forecast.map(xy)],
+    current: here,
+    rings: (storm.ringKm || []).map((km) => ({
+      cx: here.x,
+      cy: here.y,
+      rx: (km / 111) * sx,
+      ry: (km / 111) * sy,
+    })),
+  };
+}
+
+function renderTrack(storm) {
+  const plot = projectStorm(storm);
+  if (!plot) return null;
+  const svg = svgNode("svg", {
+    class: "typhoon-map",
+    viewBox: "0 0 280 72",
+    "aria-hidden": "true",
+  });
+  for (const ring of plot.rings) {
+    svg.append(svgNode("ellipse", {
+      class: "typhoon-ring-map",
+      cx: ring.cx.toFixed(1),
+      cy: ring.cy.toFixed(1),
+      rx: Math.max(ring.rx, 2).toFixed(1),
+      ry: Math.max(ring.ry, 2).toFixed(1),
+    }));
+  }
+  const lines = trackPoints({ plot });
+  if (lines.past) svg.append(svgNode("polyline", { class: "typhoon-path", points: lines.past }));
+  if (lines.forecast) svg.append(svgNode("polyline", { class: "typhoon-path is-forecast", points: lines.forecast }));
+  svg.append(svgNode("circle", {
+    class: "typhoon-dot",
+    cx: plot.current.x.toFixed(1),
+    cy: plot.current.y.toFixed(1),
+    r: "3.2",
+  }));
+  return svg;
+}
+
+function renderTyphoons(storms) {
+  els.typhoon.replaceChildren();
+  if (!storms?.length) {
+    els.typhoon.hidden = true;
+    return;
+  }
+  els.typhoon.hidden = false;
+  for (const storm of storms) {
+    const row = document.createElement("div");
+    row.className = `typhoon-item is-${storm.tone || "blue"}`;
+    const title = document.createElement("p");
+    title.className = "typhoon-title";
+    title.textContent = storm.title;
+    const meta = document.createElement("p");
+    meta.className = "typhoon-meta";
+    meta.textContent = storm.meta;
+    row.append(title, meta);
+    if (storm.rings) {
+      const rings = document.createElement("p");
+      rings.className = "typhoon-rings";
+      rings.textContent = storm.rings;
+      row.append(rings);
+    }
+    const map = renderTrack(storm);
+    if (map) row.append(map);
+    els.typhoon.append(row);
+  }
+}
+
 async function refreshWeather() {
   const s = state.settings;
   els.weatherTop.hidden = true;
   els.weatherBottom.hidden = true;
   els.weatherAlert.hidden = true;
+  els.typhoon.hidden = true;
   state.weatherOutlook = [];
+  const stormsP = s.weatherPos === "off" ? Promise.resolve([]) : fetchTyphoons().catch(() => []);
   if (s.weatherPos === "off" || !s.weather) {
     applyWeatherFx("");
+    renderTyphoons(await stormsP);
     renderDock();
     await applyWindowSize();
     return;
@@ -467,14 +573,16 @@ async function refreshWeather() {
   const useBottom = s.size === "s" || s.weatherPos === "bottom";
   const box = useBottom ? els.weatherBottom : els.weatherTop;
   try {
-    const data = await fetchWeather(s.weather);
+    const [data, storms] = await Promise.all([fetchWeather(s.weather), stormsP]);
     state.weatherOutlook = data.outlook || [];
     renderWeather(box, data, s.weather.short || s.weather.name.split(" · ")[0]);
     renderAlerts(data.alerts);
+    renderTyphoons(storms);
   } catch {
     box.hidden = false;
     box.textContent = "天气暂不可用";
     applyWeatherFx("");
+    renderTyphoons(await stormsP);
   }
   renderDock();
   await applyWindowSize();

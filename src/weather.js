@@ -261,6 +261,7 @@ export async function searchPlaces(query) {
 export function weatherMood(text = "") {
   const value = String(text);
   if (/雷/.test(value)) return "thunder";
+  if (/台风/.test(value)) return "rain";
   if (/雪|雹/.test(value)) return "snow";
   if (/雨/.test(value)) return "rain";
   if (/雾|霾|沙尘|扬沙/.test(value)) return "fog";
@@ -276,4 +277,140 @@ export async function fetchWeather(place) {
   const parsed = parseCmaWeather(bundle);
   if (parsed.temp == null) throw new Error("天气获取失败");
   return parsed;
+}
+
+const GRADE = {
+  TD: "热带低压",
+  TS: "热带风暴",
+  STS: "强热带风暴",
+  TY: "台风",
+  STY: "强台风",
+  SuperTY: "超强台风",
+};
+
+const DIR = {
+  N: "北",
+  NNE: "东北北",
+  NE: "东北",
+  ENE: "东北东",
+  E: "东",
+  ESE: "东南东",
+  SE: "东南",
+  SSE: "东南南",
+  S: "南",
+  SSW: "西南南",
+  SW: "西南",
+  WSW: "西南西",
+  W: "西",
+  WNW: "西北西",
+  NW: "西北",
+  NNW: "西北北",
+};
+
+const RING = { "30KTS": "七级", "50KTS": "十级", "64KTS": "十二级" };
+
+function stormNo(num) {
+  const text = String(num || "");
+  if (/^\d{4}$/.test(text)) return `今年第${Number(text.slice(2))}号`;
+  if (/^20\d{6}$/.test(text)) return `今年第${Number(text.slice(4))}号`;
+  return "";
+}
+
+function windScale(ms) {
+  const speed = Number(ms);
+  if (!Number.isFinite(speed)) return "";
+  const steps = [0.3, 1.6, 3.4, 5.5, 8, 10.8, 13.9, 17.2, 20.8, 24.5, 28.5, 32.7, 37, 41.5, 46.2, 51, 56.1];
+  let level = 0;
+  for (let i = 0; i < steps.length; i += 1) {
+    if (speed >= steps[i]) level = i + 1;
+  }
+  return level ? `${level}级` : "微风";
+}
+
+function stormTone(grade) {
+  if (grade === "SuperTY" || grade === "STY") return "red";
+  if (grade === "TY") return "orange";
+  if (grade === "STS") return "yellow";
+  return "blue";
+}
+
+function ringRadii(circles) {
+  if (!Array.isArray(circles)) return [];
+  return circles
+    .map((row) => {
+      if (!Array.isArray(row) || !RING[row[0]]) return 0;
+      const radii = row.slice(1, 5).map(Number).filter((n) => n > 0);
+      return radii.length ? Math.max(...radii) : 0;
+    })
+    .filter((km) => km > 0);
+}
+
+function ringText(circles) {
+  if (!Array.isArray(circles)) return "";
+  return circles
+    .map((row) => {
+      if (!Array.isArray(row)) return "";
+      const label = RING[row[0]];
+      const radii = row.slice(1, 5).map(Number).filter((n) => n > 0);
+      if (!label || !radii.length) return "";
+      const min = Math.min(...radii);
+      const max = Math.max(...radii);
+      return `${label}风圈 ${min === max ? `${min}公里` : `${min}–${max}公里`}`;
+    })
+    .filter(Boolean)
+    .join(" · ");
+}
+
+function asPoint(row) {
+  if (!Array.isArray(row) || row.length < 6) return null;
+  const lon = Number(row[4]);
+  const lat = Number(row[5]);
+  if (!Number.isFinite(lon) || !Number.isFinite(lat)) return null;
+  return { lon, lat };
+}
+
+function parseStorm(typhoon) {
+  if (!Array.isArray(typhoon) || typhoon.length < 9) return null;
+  const [, , cn, num, , , , status, points] = typhoon;
+  if (status === "stop" || !Array.isArray(points) || !points.length) return null;
+  const latest = points[points.length - 1];
+  if (!Array.isArray(latest) || latest.length < 10) return null;
+  const grade = String(latest[3] || "TD");
+  const named = Boolean(cn) && cn !== "热带低压" && cn !== "nameless";
+  const no = stormNo(num);
+  const title = named ? `${no}台风「${cn}」· ${GRADE[grade] || grade}` : `${no}${GRADE[grade] || "热带低压"}`;
+  const dir = DIR[latest[8]] || "";
+  const speed = Number(latest[9]);
+  const pressure = Number(latest[6]);
+  const move = [dir && `向${dir}`, Number.isFinite(speed) && speed > 0 ? `${Math.round(speed)}公里/时` : ""]
+    .filter(Boolean)
+    .join(" ");
+  const center = [`中心附近${windScale(latest[7])}`, Number.isFinite(pressure) ? `${Math.round(pressure)}百帕` : ""]
+    .filter(Boolean)
+    .join(" · ");
+  const forecast = Array.isArray(latest[11]?.BABJ) ? latest[11].BABJ.map((row) => asPoint([0, 0, 0, 0, row[2], row[3]])).filter(Boolean) : [];
+  return {
+    title: title.trim(),
+    tone: stormTone(grade),
+    named,
+    lon: Number(latest[4]),
+    meta: [move, center].filter(Boolean).join(" · "),
+    rings: ringText(latest[10]),
+    ringKm: ringRadii(latest[10]),
+    past: points.map(asPoint).filter(Boolean),
+    forecast,
+  };
+}
+
+export function parseTyphoons(bundle) {
+  return (bundle?.views || [])
+    .map((view) => parseStorm(view?.typhoon || view))
+    .filter(Boolean)
+    .sort((a, b) => Number(b.named) - Number(a.named) || a.lon - b.lon)
+    .slice(0, 2);
+}
+
+export async function fetchTyphoons() {
+  const bundle = await invoke("cma_get", { kind: "typhoon", q: "" });
+  return parseTyphoons(bundle);
 }

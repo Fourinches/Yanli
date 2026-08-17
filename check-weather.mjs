@@ -1,4 +1,4 @@
-import { formatHierarchy, parseCmaWeather, searchPlaces, upcomingSevere, weatherMood } from "./src/weather.js";
+import { formatHierarchy, parseCmaWeather, parseTyphoons, searchPlaces, upcomingSevere, weatherMood } from "./src/weather.js";
 
 const shanghai = await searchPlaces("上海");
 if (shanghai.length !== 1 || shanghai[0].short !== "上海" || shanghai[0].station !== "58367" || shanghai[0].name !== "上海-中国") {
@@ -118,9 +118,46 @@ if (
   weatherMood("中雨") !== "rain" ||
   weatherMood("小雪") !== "snow" ||
   weatherMood("雷阵雨") !== "thunder" ||
+  weatherMood("台风") !== "rain" ||
   weatherMood("雾") !== "fog"
 ) {
   throw new Error("天气氛围分类错误");
+}
+
+const storms = parseTyphoons({
+  views: [
+    {
+      typhoon: [
+        3302529,
+        "NANGKA",
+        "浪卡",
+        2617,
+        2617,
+        null,
+        "",
+        "start",
+        [
+          [1, "202608120000", 0, "TS", 141.7, 21.8, 998, 18, "NE", 36, [["30KTS", 300, 500, 600, 300, 1]], { BABJ: [[12, "t", 144.8, 24.3, 998, 18, "BABJ", "TS"]] }, null],
+          [2, "202608121200", 0, "TS", 145.3, 22.9, 998, 18, "E", 24, [["30KTS", 300, 300, 600, 500, 2], ["50KTS", 80, 0, 0, 60, 2]], { BABJ: [[12, "t", 147.3, 26.1, 998, 18, "BABJ", "TS"]] }, null],
+        ],
+      ],
+    },
+    {
+      typhoon: [1, "X", "已停编", 2601, 2601, null, "", "stop", [[1, "t", 0, "TD", 130, 20, 1000, 15, "N", 10, [], {}, null]]],
+    },
+  ],
+});
+if (
+  storms.length !== 1 ||
+  storms[0].title !== "今年第17号台风「浪卡」· 热带风暴" ||
+  storms[0].tone !== "blue" ||
+  storms[0].meta !== "向东 24公里/时 · 中心附近8级 · 998百帕" ||
+  storms[0].rings !== "七级风圈 300–600公里 · 十级风圈 60–80公里" ||
+  storms[0].past.length !== 2 ||
+  storms[0].forecast.length !== 1
+) {
+  console.error(storms);
+  throw new Error("台风通报解析错误");
 }
 
 console.log("weather checks passed", shanghai[0].name, hangzhou[0].name, `北京 ${beijing.temp}° ${beijing.text}`);
