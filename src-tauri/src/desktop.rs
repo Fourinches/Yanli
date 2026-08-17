@@ -55,13 +55,19 @@ unsafe fn wallpaper_worker() -> Result<HWND, String> {
         Some(find_wallpaper_worker),
         LPARAM(&mut state as *mut FindState as isize),
     );
-    if state.worker.is_invalid() {
-        return Err("找不到桌面壁纸层".into());
+    if !state.worker.is_invalid() {
+        return Ok(state.worker);
     }
-    Ok(state.worker)
+    if let Ok(worker) = FindWindowExW(Some(progman), None, w!("WorkerW"), None) {
+        if !worker.is_invalid() {
+            return Ok(worker);
+        }
+    }
+    Err("找不到桌面壁纸层".into())
 }
 
 pub fn attach_to_wallpaper(win: &WebviewWindow) -> Result<(), String> {
+    let pos = win.outer_position().ok();
     unsafe {
         let hwnd = window_hwnd(win)?;
         let worker = wallpaper_worker()?;
@@ -77,6 +83,9 @@ pub fn attach_to_wallpaper(win: &WebviewWindow) -> Result<(), String> {
         );
     }
     let _ = win.set_always_on_top(false);
+    if let Some(p) = pos {
+        let _ = move_window(win, p.x, p.y);
+    }
     Ok(())
 }
 

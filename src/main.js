@@ -85,6 +85,7 @@ function applyAppearance() {
   const s = state.settings;
   els.body.dataset.theme = s.theme;
   els.body.dataset.size = s.size;
+  els.body.dataset.layer = s.layer;
   els.body.style.setProperty("--card-alpha", String(s.opacity / 100));
   els.body.style.setProperty("--font-body", fontValue(s.font));
   els.opacity.value = String(s.opacity);
@@ -479,7 +480,7 @@ function bindEvents() {
       state.settings.layer = state.settings.layer === "desktop" ? "normal" : "desktop";
       persist();
       els.layer.value = state.settings.layer;
-      refreshCtxLabels();
+      applyAppearance();
       await applyWindowChrome();
     }
     if (act === "autostart") {
@@ -518,6 +519,7 @@ async function bindNativeEvents() {
       state.settings.layer = event.payload || "desktop";
       persist();
       els.layer.value = state.settings.layer;
+      applyAppearance();
     });
   } catch {
     // 浏览器预览

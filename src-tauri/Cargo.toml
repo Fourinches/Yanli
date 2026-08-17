@@ -1,6 +1,6 @@
 [package]
 name = "yanli"
-version = "1.2.6"
+version = "1.2.7"
 description = "轻量桌面中国日历"
 authors = ["you"]
 edition = "2021"
@@ -26,3 +26,6 @@ windows = { version = "0.61", features = [
     "Win32_Graphics_Gdi",
     "Win32_UI_WindowsAndMessaging",
 ] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6"

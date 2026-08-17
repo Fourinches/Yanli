@@ -561,3 +561,16 @@ select:focus-visible {
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { transition: none !important; }
 }
+
+[data-layer="desktop"],
+[data-layer="desktop"] button,
+[data-layer="desktop"] .day,
+[data-layer="desktop"] .topbar,
+[data-layer="desktop"] .month-block {
+  cursor: default;
+}
+
+[data-layer="desktop"] .sheet button,
+[data-layer="desktop"] .ctx button {
+  cursor: pointer;
+}

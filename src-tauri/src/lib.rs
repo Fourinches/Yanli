@@ -1,3 +1,5 @@
+use std::sync::Mutex;
+
 use tauri::{
     menu::{Menu, MenuItem, PredefinedMenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
@@ -10,6 +12,37 @@ use tauri_plugin_autostart::ManagerExt;
 mod cma;
 #[cfg(windows)]
 mod desktop;
+#[cfg(target_os = "macos")]
+mod macos;
+
+static CURRENT_LAYER: Mutex<String> = Mutex::new(String::new());
+
+fn remember_layer(layer: &str) {
+    if let Ok(mut current) = CURRENT_LAYER.lock() {
+        *current = layer.to_string();
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn current_layer() -> String {
+    CURRENT_LAYER
+        .lock()
+        .map(|current| current.clone())
+        .unwrap_or_default()
+}
+
+fn apply_native_layer(win: &tauri::WebviewWindow, layer: &str) -> Result<(), String> {
+    remember_layer(layer);
+    #[cfg(windows)]
+    desktop::apply_layer(win, layer)?;
+    #[cfg(target_os = "macos")]
+    macos::apply_layer(win, layer)?;
+    #[cfg(not(any(windows, target_os = "macos")))]
+    {
+        let _ = win.set_always_on_top(layer == "top");
+    }
+    Ok(())
+}
 
 fn show_main(app: &tauri::AppHandle) {
     if let Some(win) = app.get_webview_window("main") {
@@ -23,41 +56,10 @@ fn main_window(app: &tauri::AppHandle) -> Result<tauri::WebviewWindow, String> {
     app.get_webview_window("main").ok_or_else(|| "窗口不存在".into())
 }
 
-#[cfg(target_os = "macos")]
-fn apply_mac_layer(win: &tauri::WebviewWindow, layer: &str) -> Result<(), String> {
-    match layer {
-        "desktop" => {
-            let _ = win.set_always_on_top(false);
-            let _ = win.set_always_on_bottom(true);
-            let _ = win.set_skip_taskbar(true);
-            let _ = win.set_visible_on_all_workspaces(true);
-        }
-        "top" => {
-            let _ = win.set_always_on_bottom(false);
-            let _ = win.set_always_on_top(true);
-            let _ = win.set_skip_taskbar(true);
-        }
-        _ => {
-            let _ = win.set_always_on_bottom(false);
-            let _ = win.set_always_on_top(false);
-            let _ = win.set_skip_taskbar(false);
-        }
-    }
-    Ok(())
-}
-
 #[tauri::command]
 fn set_window_layer(app: tauri::AppHandle, layer: String) -> Result<(), String> {
     let win = main_window(&app)?;
-    #[cfg(windows)]
-    desktop::apply_layer(&win, &layer)?;
-    #[cfg(target_os = "macos")]
-    apply_mac_layer(&win, &layer)?;
-    #[cfg(not(any(windows, target_os = "macos")))]
-    {
-        let _ = win.set_always_on_top(layer == "top");
-    }
-    Ok(())
+    apply_native_layer(&win, &layer)
 }
 
 #[tauri::command]
@@ -189,10 +191,7 @@ pub fn run() {
                     }
                     "desktop" => {
                         if let Ok(win) = main_window(app) {
-                            #[cfg(windows)]
-                            let _ = desktop::apply_layer(&win, "desktop");
-                            #[cfg(target_os = "macos")]
-                            let _ = apply_mac_layer(&win, "desktop");
+                            let _ = apply_native_layer(&win, "desktop");
                             let _ = app.emit("yanli://layer", "desktop");
                         }
                         show_main(app);
@@ -223,11 +222,22 @@ pub fn run() {
                 let _ = win.set_background_color(Some(tauri::window::Color(0, 0, 0, 0)));
                 let handle = app.handle().clone();
                 win.on_window_event(move |event| {
-                    if let WindowEvent::CloseRequested { api, .. } = event {
-                        api.prevent_close();
-                        if let Some(main) = handle.get_webview_window("main") {
-                            let _ = main.hide();
+                    match event {
+                        WindowEvent::CloseRequested { api, .. } => {
+                            api.prevent_close();
+                            if let Some(main) = handle.get_webview_window("main") {
+                                let _ = main.hide();
+                            }
                         }
+                        WindowEvent::Focused(true) => {
+                            #[cfg(target_os = "macos")]
+                            if current_layer() == "desktop" {
+                                if let Some(main) = handle.get_webview_window("main") {
+                                    let _ = apply_native_layer(&main, "desktop");
+                                }
+                            }
+                        }
+                        _ => {}
                     }
                 });
             }
