@@ -6,6 +6,7 @@ use tauri::WebviewWindow;
 
 // https://developer.apple.com/documentation/coregraphics/cgwindowlevel
 const DESKTOP_WINDOW_LEVEL: isize = (i32::MIN as isize) + 5 + 20;
+const DESKTOP_ICON_WINDOW_LEVEL: isize = DESKTOP_WINDOW_LEVEL + 20;
 const NORMAL_WINDOW_LEVEL: isize = 0;
 const FLOATING_WINDOW_LEVEL: isize = 3;
 
@@ -45,10 +46,14 @@ pub fn apply_layer(win: &WebviewWindow, layer: &str) -> Result<(), String> {
             let _ = win.set_always_on_bottom(false);
             let _ = win.set_skip_taskbar(true);
             let _ = win.set_visible_on_all_workspaces(true);
+            let _ = win.set_ignore_cursor_events(false);
             with_ns_window(win, |ns| {
-                // 壁纸之上、桌面图标之下，点桌面/显示桌面时仍留在原处。
-                set_level(ns, DESKTOP_WINDOW_LEVEL + 1);
+                // 必须高于桌面图标层，否则 Finder 会吃掉点击，窗口看起来像被穿透。
+                set_level(ns, DESKTOP_ICON_WINDOW_LEVEL + 1);
                 set_desktop_behavior(ns, true);
+                unsafe {
+                    let _: () = msg_send![ns, setIgnoresMouseEvents: false];
+                }
             });
         }
         "top" => {

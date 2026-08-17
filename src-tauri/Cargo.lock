@@ -4774,7 +4774,7 @@ dependencies = [
 
 [[package]]
 name = "yanli"
-version = "1.2.8"
+version = "1.2.9"
 dependencies = [
  "objc2",
  "reqwest 0.12.28",
