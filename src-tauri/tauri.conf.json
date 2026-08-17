@@ -1,7 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "砚历",
-  "version": "1.2.0",
+  "mainBinaryName": "Yanli",
+  "version": "1.2.1",
   "identifier": "com.yanli.calendar",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -34,7 +35,8 @@
     "active": true,
     "targets": ["nsis", "dmg"],
     "macOS": {
-      "minimumSystemVersion": "12.0"
+      "minimumSystemVersion": "11.0",
+      "bundleName": "Yanli"
     },
     "icon": [
       "icons/32x32.png",

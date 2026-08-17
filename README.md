@@ -11,7 +11,15 @@ Windows 安装程序会询问：
 - 是否创建桌面快捷方式
 - 是否开机自动启动
 
-macOS 为 DMG，拖到「应用程序」即可；开机启动在应用右键菜单或设置里开关。
+macOS 为 **Intel + Apple Silicon 通用包**。把 `Yanli.app` 拖到「应用程序」后再打开。
+
+若提示无法验证开发者：按住 Control 单击应用选「打开」，或在终端执行：
+
+```bash
+xattr -cr /Applications/Yanli.app
+```
+
+开机启动在应用右键菜单或设置里开关。
 
 发布页：<https://github.com/Fourinches/Yanli/releases>
 
