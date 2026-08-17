@@ -116,6 +116,35 @@ function clean(value) {
   return text;
 }
 
+const ALERT_TIPS = [
+  { test: /台风|龙卷/, tip: "请勿外出，关好门窗" },
+  { test: /暴雨/, tip: "减少外出，远离积水" },
+  { test: /雷/, tip: "请勿户外活动，关闭门窗" },
+  { test: /冰雹/, tip: "请勿外出，远离玻璃窗" },
+  { test: /大风|狂风/, tip: "关好门窗，远离搭建物" },
+  { test: /高温/, tip: "减少户外活动，注意防暑" },
+  { test: /寒潮|霜冻|低温/, tip: "注意保暖，减少外出" },
+  { test: /大雾|霾|雾/, tip: "减少外出，出行注意安全" },
+  { test: /暴雪|雪/, tip: "减少外出，注意路面湿滑" },
+  { test: /结冰|道路/, tip: "出行小心路滑" },
+  { test: /火险|森林/, tip: "严禁野外用火" },
+  { test: /沙尘/, tip: "减少外出，关好门窗" },
+];
+
+function alertTone(level, title) {
+  const key = `${level}${title}`;
+  if (/红/.test(key)) return "red";
+  if (/橙/.test(key)) return "orange";
+  if (/黄/.test(key)) return "yellow";
+  if (/蓝/.test(key)) return "blue";
+  return "yellow";
+}
+
+function alertTip(type, title) {
+  const key = `${type}${title}`;
+  return ALERT_TIPS.find((item) => item.test.test(key))?.tip || "注意防范，减少外出";
+}
+
 function officialAlerts(alarm) {
   if (!Array.isArray(alarm) || !alarm.length) return [];
   return alarm
@@ -125,11 +154,10 @@ function officialAlerts(alarm) {
       const title = clean(item.title || item.issuecontent || item.description);
       const text = type && level ? `${type}${level}预警` : title;
       if (!text) return null;
-      const danger = /红|橙/.test(`${level}${title}`);
-      return { level: danger ? "danger" : "warn", text };
+      return { text, tone: alertTone(level, title), tip: alertTip(type, title) };
     })
     .filter(Boolean)
-    .slice(0, 2);
+    .slice(0, 3);
 }
 
 const SEVERE = /雨|雪|雹|雷|台风|沙尘/;
@@ -142,21 +170,39 @@ function severeText(day) {
   return "";
 }
 
-function dayLabel(dateStr) {
+function parseDayDate(dateStr) {
   const match = String(dateStr || "").match(/(\d{4})\D+(\d{1,2})\D+(\d{1,2})/);
-  return match ? `${Number(match[3])}日` : "";
+  if (!match) return null;
+  return new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+}
+
+function sameDate(a, b) {
+  return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+}
+
+function nextDate(date) {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate() + 1);
+}
+
+function rangeLabel(start, end, text) {
+  if (sameDate(start, end)) return `${start.getDate()}日${text}`;
+  return `${start.getDate()}–${end.getDate()}日${text}`;
 }
 
 export function upcomingSevere(daily = []) {
-  const tips = [];
+  const groups = [];
   for (const day of daily.slice(1)) {
     const text = severeText(day);
-    const label = dayLabel(day.date);
-    if (!text || !label) continue;
-    tips.push(`${label}${text}`);
-    if (tips.length >= 2) break;
+    const date = parseDayDate(day.date);
+    if (!text || !date) continue;
+    const last = groups[groups.length - 1];
+    if (last && last.text === text && sameDate(nextDate(last.end), date)) {
+      last.end = date;
+    } else {
+      groups.push({ start: date, end: date, text });
+    }
   }
-  return tips;
+  return groups.map((item) => rangeLabel(item.start, item.end, item.text));
 }
 
 export function parseCmaWeather(bundle) {
@@ -210,6 +256,17 @@ export async function searchPlaces(query) {
   }
   merged.sort((a, b) => Number(b.name.startsWith(name)) - Number(a.name.startsWith(name)));
   return merged.slice(0, 8);
+}
+
+export function weatherMood(text = "") {
+  const value = String(text);
+  if (/雷/.test(value)) return "thunder";
+  if (/雪|雹/.test(value)) return "snow";
+  if (/雨/.test(value)) return "rain";
+  if (/雾|霾|沙尘|扬沙/.test(value)) return "fog";
+  if (/阴|云/.test(value)) return "cloud";
+  if (/晴/.test(value)) return "sun";
+  return "haze";
 }
 
 export async function fetchWeather(place) {

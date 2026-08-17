@@ -9,12 +9,11 @@ import {
   getMonthMeta,
   getNextHolidayLabel,
   getNextJieQiLabel,
-  getTodayAlmanac,
   shiftMonth,
   todayParts,
 } from "./calendar.js";
 import { syncHolidays } from "./holidays.js";
-import { fetchWeather, searchPlaces } from "./weather.js";
+import { fetchWeather, searchPlaces, weatherMood } from "./weather.js";
 import {
   FONTS,
   LAYERS,
@@ -50,6 +49,7 @@ const els = {
   weatherTop: document.getElementById("weather-top"),
   weatherBottom: document.getElementById("weather-bottom"),
   weatherAlert: document.getElementById("weather-alert"),
+  weatherFx: document.getElementById("weather-fx"),
   ctxDesktop: document.getElementById("ctx-desktop"),
   ctxAutostart: document.getElementById("ctx-autostart"),
   ctx: document.getElementById("ctx-menu"),
@@ -106,8 +106,9 @@ function applyAppearance() {
 
 async function applyWindowSize() {
   const size = SIZES[state.settings.size] || SIZES.m;
+  const extra = els.weatherAlert && !els.weatherAlert.hidden ? els.weatherAlert.offsetHeight : 0;
   try {
-    await invoke("resize_window", { width: size.width, height: size.height });
+    await invoke("resize_window", { width: size.width, height: size.height + extra });
   } catch {
     // 浏览器预览
   }
@@ -225,11 +226,8 @@ function renderDock() {
   const selected = state.selected;
   const from = new Date(selected.year, selected.month - 1, selected.day);
   const next = getNextHolidayLabel(from);
-  const almanac = getTodayAlmanac(selected.year, selected.month, selected.day);
-  const yi = almanac.yi ? `宜 ${almanac.yi}` : "";
-  const ji = almanac.ji ? `忌 ${almanac.ji}` : "";
   const outlook = state.weatherOutlook.join(" · ");
-  const text = [next, outlook, [yi, ji].filter(Boolean).join(" · ")].filter(Boolean).join("  ·  ");
+  const text = [next, outlook].filter(Boolean).join("  ·  ");
   els.dock.hidden = !text;
   els.dock.textContent = text;
 }
@@ -299,21 +297,83 @@ async function quitApp() {
   }
 }
 
+function fxNode(className, style = {}) {
+  const node = document.createElement("span");
+  node.className = className;
+  Object.assign(node.style, style);
+  return node;
+}
+
+function applyWeatherFx(text) {
+  const layer = els.weatherFx;
+  if (!layer) return;
+  const mood = text ? weatherMood(text) : "";
+  if (layer.dataset.mood === mood) return;
+  layer.dataset.mood = mood;
+  layer.replaceChildren();
+  if (!mood) return;
+
+  if (mood === "sun") {
+    layer.append(fxNode("fx-sun"), fxNode("fx-shine"));
+  }
+  if (mood === "cloud" || mood === "haze") {
+    layer.append(
+      fxNode("fx-cloud", { top: "8%", left: "-10%" }),
+      fxNode("fx-cloud is-late", { top: "42%", left: "35%" }),
+    );
+  }
+  if (mood === "rain" || mood === "thunder") {
+    for (let i = 0; i < 14; i += 1) {
+      layer.append(fxNode("fx-drop", {
+        left: `${4 + ((i * 7) % 92)}%`,
+        animationDelay: `${(i % 7) * 0.18}s`,
+        animationDuration: `${0.75 + (i % 5) * 0.12}s`,
+      }));
+    }
+  }
+  if (mood === "thunder") {
+    layer.append(fxNode("fx-flash"));
+  }
+  if (mood === "snow" || mood === "fog") {
+    layer.append(
+      fxNode("fx-fog", { top: "10%", left: "-15%" }),
+      fxNode("fx-fog is-late", { top: "55%", left: "20%" }),
+    );
+  }
+}
+
 function renderWeather(target, data, name) {
   target.hidden = false;
   target.textContent = `${name} ${data.temp}° ${data.text}`;
+  applyWeatherFx(data.text);
 }
 
 function renderAlerts(alerts) {
+  els.weatherAlert.replaceChildren();
   if (!alerts?.length) {
     els.weatherAlert.hidden = true;
-    els.weatherAlert.textContent = "";
     return;
   }
-  const top = alerts[0];
   els.weatherAlert.hidden = false;
-  els.weatherAlert.className = `alert is-${top.level}`;
-  els.weatherAlert.textContent = alerts.map((item) => item.text).join(" · ");
+  els.weatherAlert.className = "alert";
+  for (const item of alerts) {
+    const row = document.createElement("div");
+    row.className = `alert-item is-${item.tone || "yellow"}`;
+    const mark = document.createElement("span");
+    mark.className = "alert-mark";
+    mark.setAttribute("aria-hidden", "true");
+    mark.textContent = "⚠️";
+    const copy = document.createElement("div");
+    const title = document.createElement("p");
+    title.className = "alert-title";
+    title.textContent = item.text;
+    const tip = document.createElement("p");
+    tip.className = "alert-tip";
+    tip.textContent = item.tip || "注意防范，减少外出";
+    copy.append(title, tip);
+    row.append(mark, copy);
+    els.weatherAlert.append(row);
+  }
 }
 
 async function refreshWeather() {
@@ -323,7 +383,9 @@ async function refreshWeather() {
   els.weatherAlert.hidden = true;
   state.weatherOutlook = [];
   if (s.weatherPos === "off" || !s.weather) {
+    applyWeatherFx("");
     renderDock();
+    await applyWindowSize();
     return;
   }
   const useBottom = s.size === "s" || s.weatherPos === "bottom";
@@ -336,8 +398,10 @@ async function refreshWeather() {
   } catch {
     box.hidden = false;
     box.textContent = "天气暂不可用";
+    applyWeatherFx("");
   }
   renderDock();
+  await applyWindowSize();
 }
 
 function watchCalendarDay() {

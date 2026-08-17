@@ -9,6 +9,7 @@
   <body data-theme="frost" data-size="m">
     <div class="shell">
       <main class="card" id="card">
+        <div class="weather-fx" id="weather-fx" aria-hidden="true"></div>
         <header class="topbar" id="drag-bar">
           <div class="brand js-drag">
             <span class="brand-title">砚历</span>
@@ -37,7 +38,7 @@
         </header>
 
         <div class="weather weather-row" id="weather-top" hidden></div>
-        <div class="alert" id="weather-alert" hidden></div>
+        <div class="alert" id="weather-alert" hidden role="status" aria-live="polite"></div>
 
         <section class="month-block js-drag" id="month-drag" aria-live="polite">
           <h1 class="month-label" id="month-label">8月</h1>
