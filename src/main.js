@@ -353,15 +353,39 @@ async function restorePosition() {
   }
 }
 
+function isWindows() {
+  return navigator.userAgent.includes("Windows");
+}
+
+async function saveWindowPos() {
+  try {
+    const pos = await getCurrentWindow().outerPosition();
+    localStorage.setItem(POS_KEY, JSON.stringify({ x: pos.x, y: pos.y }));
+  } catch {
+    // 浏览器预览
+  }
+}
+
 function bindDrag(el) {
   el.addEventListener("mousedown", async (event) => {
     if (event.button !== 0) return;
     if (event.target.closest("button, input, select, a, .weather")) return;
+
+    const wallpaperChild = isWindows() && state.settings.layer === "desktop";
+    if (!wallpaperChild) {
+      try {
+        window.addEventListener("mouseup", saveWindowPos, { once: true });
+        await getCurrentWindow().startDragging();
+        return;
+      } catch {
+        // 再走手动拖动
+      }
+    }
+
     const start = { x: event.screenX, y: event.screenY };
     let origin = { x: event.screenX - event.clientX, y: event.screenY - event.clientY };
     try {
-      const win = getCurrentWindow();
-      origin = await win.outerPosition();
+      origin = await getCurrentWindow().outerPosition();
     } catch {
       // 浏览器预览没有窗口坐标
     }
