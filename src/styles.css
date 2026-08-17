@@ -616,6 +616,33 @@ select:focus-visible {
 
 .place-list button:hover { background: var(--muted); }
 
+.update-copy,
+.update-status {
+  margin: 0 0 10px;
+  color: var(--fg-soft);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.update-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.ghost-btn,
+.update-actions .text-btn {
+  flex: 1;
+}
+
+.ghost-btn {
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: var(--muted);
+  color: var(--fg);
+}
+
+#check-update { width: 100%; margin-top: 8px; }
+
 .place-now,
 .place-src {
   margin: 0;

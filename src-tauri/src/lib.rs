@@ -10,6 +10,7 @@ use tauri_plugin_autostart::MacosLauncher;
 use tauri_plugin_autostart::ManagerExt;
 
 mod cma;
+mod update;
 #[cfg(windows)]
 mod desktop;
 #[cfg(target_os = "macos")]
@@ -160,7 +161,10 @@ pub fn run() {
             quit_app,
             set_autostart,
             is_autostart_on,
-            cma::cma_get
+            cma::cma_get,
+            update::check_update,
+            update::download_update,
+            update::install_update
         ])
         .setup(|app| {
             let show = MenuItem::with_id(app, "show", "显示日历", true, None::<&str>)?;

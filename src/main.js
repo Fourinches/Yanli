@@ -28,6 +28,7 @@ import {
 
 const POS_KEY = "yanli-pos";
 const SELECTED_KEY = "yanli-selected";
+const SKIP_UPDATE_KEY = "yanli-skip-update";
 
 const state = {
   ...todayParts(),
@@ -35,6 +36,7 @@ const state = {
   settings: loadSettings(),
   weatherOutlook: [],
   calendarDay: "",
+  pendingUpdate: null,
 };
 
 const els = {
@@ -65,6 +67,15 @@ const els = {
   place: document.getElementById("set-place"),
   placeList: document.getElementById("place-list"),
   placeNow: document.getElementById("place-now"),
+  appVersion: document.getElementById("app-version"),
+  checkUpdate: document.getElementById("check-update"),
+  updateHint: document.getElementById("update-hint"),
+  updateSheet: document.getElementById("update-sheet"),
+  updateCopy: document.getElementById("update-copy"),
+  updateStatus: document.getElementById("update-status"),
+  updateLater: document.getElementById("update-later"),
+  updateNow: document.getElementById("update-now"),
+  updateClose: document.getElementById("update-close"),
 };
 
 function sameDay(a, b) {
@@ -266,6 +277,57 @@ function openSettings() {
 
 function closeSettings() {
   els.settings.hidden = true;
+}
+
+function hideUpdateSheet() {
+  if (els.updateSheet) els.updateSheet.hidden = true;
+}
+
+function showUpdateSheet(info) {
+  if (!els.updateSheet) return;
+  state.pendingUpdate = info;
+  els.updateCopy.textContent = `当前 ${info.current}，可更新到 ${info.latest}`;
+  els.updateStatus.textContent = "";
+  els.updateNow.disabled = false;
+  els.updateSheet.hidden = false;
+}
+
+async function checkForUpdate(manual = false) {
+  try {
+    const info = await invoke("check_update");
+    if (els.appVersion) els.appVersion.textContent = `当前版本 ${info.current}`;
+    if (!info.available) {
+      if (manual && els.updateHint) els.updateHint.textContent = `已是最新版本 ${info.current}`;
+      return;
+    }
+    if (!manual && localStorage.getItem(SKIP_UPDATE_KEY) === info.latest) return;
+    if (els.updateHint) els.updateHint.textContent = `发现新版本 ${info.latest}`;
+    showUpdateSheet(info);
+  } catch {
+    if (manual && els.updateHint) els.updateHint.textContent = "暂时无法检查更新";
+  }
+}
+
+function skipUpdate() {
+  if (state.pendingUpdate?.latest) {
+    localStorage.setItem(SKIP_UPDATE_KEY, state.pendingUpdate.latest);
+  }
+  hideUpdateSheet();
+}
+
+async function startUpdate() {
+  const info = state.pendingUpdate;
+  if (!info?.url) return;
+  els.updateNow.disabled = true;
+  els.updateStatus.textContent = "正在下载新版本…";
+  try {
+    const path = await invoke("download_update", { url: info.url });
+    els.updateStatus.textContent = "下载完成，即将安装并退出";
+    await invoke("install_update", { path });
+  } catch {
+    els.updateNow.disabled = false;
+    els.updateStatus.textContent = "更新失败，请稍后重试";
+  }
 }
 
 function hideCtx() {
@@ -553,6 +615,10 @@ function bindEvents() {
   document.getElementById("close-btn").addEventListener("click", hideWindow);
   document.getElementById("settings-btn").addEventListener("click", openSettings);
   document.getElementById("settings-close").addEventListener("click", closeSettings);
+  els.checkUpdate?.addEventListener("click", () => checkForUpdate(true));
+  els.updateClose?.addEventListener("click", hideUpdateSheet);
+  els.updateLater?.addEventListener("click", skipUpdate);
+  els.updateNow?.addEventListener("click", startUpdate);
   document.getElementById("search-place").addEventListener("click", searchCity);
   els.place.addEventListener("keydown", (event) => {
     if (event.key === "Enter") searchCity();
@@ -564,7 +630,7 @@ function bindEvents() {
   });
   document.addEventListener("contextmenu", (event) => {
     event.preventDefault();
-    if (event.target.closest(".sheet")) return;
+    if (event.target.closest(".sheet, #update-sheet")) return;
     refreshCtxLabels();
     showCtx(event.clientX, event.clientY);
   });
@@ -576,6 +642,7 @@ function bindEvents() {
     hideCtx();
     if (act === "today") goToday();
     if (act === "settings") openSettings();
+    if (act === "update") checkForUpdate(true);
     if (act === "desktop") {
       state.settings.layer = state.settings.layer === "desktop" ? "normal" : "desktop";
       persist();
@@ -639,6 +706,7 @@ refreshCtxLabels();
 restorePosition();
 refreshWeather();
 bindNativeEvents();
+setTimeout(() => checkForUpdate(false), 2500);
 syncHolidays()
   .then(() => renderMonth())
   .catch(() => {});
