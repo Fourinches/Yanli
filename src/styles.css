@@ -1,4 +1,4 @@
-:root,
+﻿:root,
 [data-theme="frost"] {
   --fg: #0f172a;
   --fg-soft: #475569;
@@ -134,6 +134,41 @@ select:focus-visible {
 }
 
 .card > *:not(.weather-fx) { position: relative; z-index: 1; }
+.card > .weather,
+.card > .alert,
+.card > .typhoon { z-index: 3; }
+
+html[data-mode="chart"],
+body[data-mode="chart"] {
+  background: #1c2433;
+}
+
+[data-mode="chart"] .shell,
+[data-mode="chart"] .ctx,
+[data-mode="chart"] #settings,
+[data-mode="chart"] #update-sheet { display: none !important; }
+
+[data-mode="chart"] #chart-sheet {
+  display: grid !important;
+  place-items: stretch;
+  padding: 18px;
+  background: rgba(15, 23, 42, 0.08);
+}
+
+[data-mode="chart"] .chart-card {
+  width: 100%;
+  max-width: none;
+  max-height: none;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+[data-mode="chart"] .chart-view {
+  flex: 1;
+  height: auto;
+  min-height: 0;
+}
 
 .fx-sun,
 .fx-shine,
@@ -514,6 +549,16 @@ select:focus-visible {
   cursor: zoom-in;
   touch-action: none;
 }
+
+.chart-empty {
+  margin: 0;
+  padding: 28px 16px;
+  color: var(--fg-soft);
+  text-align: center;
+}
+
+.chart-empty[hidden],
+.chart-view img[hidden] { display: none; }
 
 .chart-view.is-zoomed { cursor: grab; }
 .chart-view.is-dragging { cursor: grabbing; }

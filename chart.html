@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>台风路径图</title>
+    <style>
+      * { box-sizing: border-box; }
+      html, body {
+        margin: 0;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        background: #1c2433;
+        color: #e2e8f0;
+        font-family: "Microsoft YaHei UI", "PingFang SC", sans-serif;
+      }
+      body { display: flex; flex-direction: column; }
+      header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 12px 16px 8px;
+      }
+      h1 { margin: 0; font-size: 16px; font-weight: 600; }
+      h1 span { margin-left: 8px; color: #94a3b8; font-size: 12px; font-weight: 400; }
+      .actions { display: flex; gap: 8px; }
+      button {
+        border: 0;
+        border-radius: 8px;
+        background: rgba(255, 255, 255, 0.08);
+        color: inherit;
+        cursor: pointer;
+      }
+      .icon-btn { width: 32px; height: 32px; }
+      .icon-btn svg { display: block; width: 18px; height: 18px; margin: 7px auto; fill: none; stroke: currentColor; stroke-width: 1.8; }
+      .text-btn { padding: 8px 12px; margin: 0 16px 14px; align-self: flex-start; }
+      #view {
+        flex: 1;
+        min-height: 0;
+        margin: 0 16px 12px;
+        overflow: hidden;
+        border-radius: 10px;
+        background: #e8eef5;
+        cursor: zoom-in;
+        touch-action: none;
+      }
+      #view.is-zoomed { cursor: grab; }
+      #view.is-dragging { cursor: grabbing; }
+      #empty { margin: 0; padding: 36px 16px; color: #64748b; text-align: center; }
+      #empty[hidden], img[hidden] { display: none; }
+      img {
+        display: block;
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+        transform-origin: 0 0;
+        user-select: none;
+        -webkit-user-drag: none;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>台风路径图 <span>滚轮放大 · 拖动查看</span></h1>
+      <div class="actions">
+        <button class="icon-btn" id="close" type="button" aria-label="关闭路径图">
+          <svg viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18" /></svg>
+        </button>
+      </div>
+    </header>
+    <div id="view">
+      <p id="empty">正在载入路径图…</p>
+      <img id="img" alt="中央气象台台风路径图" hidden />
+    </div>
+    <button class="text-btn" id="site" type="button">打开中央气象台</button>
+    <script type="module" src="/src/chart.js"></script>
+  </body>
+</html>

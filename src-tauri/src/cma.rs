@@ -281,11 +281,78 @@ async fn typhoon_chart(list: &Value) -> Result<(String, String), String> {
         pages[0].to_string()
     };
     if let Ok(bytes) = get_bytes(&url, "https://www.nmc.cn/").await {
+        let _ = std::fs::write(chart_cache_path(), &bytes);
         if let Some(data) = as_data_url(&bytes) {
             return Ok((data, page));
         }
     }
     Ok((url, page))
+}
+
+pub fn chart_cache_path() -> std::path::PathBuf {
+    std::env::temp_dir().join("yanli-typhoon-chart.img")
+}
+
+#[allow(dead_code)]
+pub fn persist_chart_source(chart: &str, page: &str) {
+    let _ = std::fs::write(std::env::temp_dir().join("yanli-typhoon-chart.txt"), page);
+    if chart.is_empty() {
+        return;
+    }
+    if let Some(raw) = chart
+        .strip_prefix("data:image/jpeg;base64,")
+        .or_else(|| chart.strip_prefix("data:image/png;base64,"))
+    {
+        if let Ok(bytes) = b64_decode(raw) {
+            let _ = std::fs::write(chart_cache_path(), bytes);
+            let _ = std::fs::remove_file(std::env::temp_dir().join("yanli-typhoon-chart.url"));
+        }
+        return;
+    }
+    if chart.starts_with("https://image.nmc.cn/product/") && chart.contains("/TCBU/") {
+        let _ = std::fs::write(std::env::temp_dir().join("yanli-typhoon-chart.url"), chart);
+        let _ = std::fs::remove_file(chart_cache_path());
+    }
+}
+
+fn b64_decode(input: &str) -> Result<Vec<u8>, String> {
+    fn val(c: u8) -> Option<u8> {
+        match c {
+            b'A'..=b'Z' => Some(c - b'A'),
+            b'a'..=b'z' => Some(c - b'a' + 26),
+            b'0'..=b'9' => Some(c - b'0' + 52),
+            b'+' => Some(62),
+            b'/' => Some(63),
+            _ => None,
+        }
+    }
+    let mut out = Vec::with_capacity(input.len() / 4 * 3);
+    let mut buf = 0u32;
+    let mut n = 0;
+    for c in input.bytes() {
+        if c == b'=' || c.is_ascii_whitespace() {
+            continue;
+        }
+        let Some(v) = val(c) else {
+            return Err("图片数据无效".into());
+        };
+        buf = (buf << 6) | u32::from(v);
+        n += 1;
+        if n == 4 {
+            out.push((buf >> 16) as u8);
+            out.push((buf >> 8) as u8);
+            out.push(buf as u8);
+            n = 0;
+            buf = 0;
+        }
+    }
+    if n == 2 {
+        out.push((buf >> 4) as u8);
+    } else if n == 3 {
+        out.push((buf >> 10) as u8);
+        out.push((buf >> 2) as u8);
+    }
+    Ok(out)
 }
 
 async fn locate_path(id: &str) -> String {
@@ -339,5 +406,11 @@ mod tests {
             Some("https://image.nmc.cn/product/2026/08/14/TCBU/medium/SEVP_0W26170000.JPG")
         );
         assert_eq!(pick_typhoon_chart(&urls[..1], &["2618".into()]), None);
+    }
+
+    #[test]
+    fn roundtrips_base64() {
+        let raw = b"\xFF\xD8\xFF hello-chart";
+        assert_eq!(b64_decode(&b64(raw)).unwrap(), raw);
     }
 }

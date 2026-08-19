@@ -63,6 +63,7 @@ const els = {
   layer: document.getElementById("set-layer"),
   weatherPos: document.getElementById("set-weather-pos"),
   weatherAnim: document.getElementById("set-weather-anim"),
+  typhoonAlert: document.getElementById("set-typhoon-alert"),
   opacity: document.getElementById("set-opacity"),
   opacityVal: document.getElementById("opacity-val"),
   autostart: document.getElementById("set-autostart"),
@@ -75,6 +76,7 @@ const els = {
   chartSheet: document.getElementById("chart-sheet"),
   chartView: document.getElementById("chart-view"),
   chartZoom: document.getElementById("chart-zoom"),
+  chartEmpty: document.getElementById("chart-empty"),
   updateSheet: document.getElementById("update-sheet"),
   updateCopy: document.getElementById("update-copy"),
   updateStatus: document.getElementById("update-status"),
@@ -112,11 +114,12 @@ function applyAppearance() {
   els.body.dataset.layer = s.layer;
   els.body.style.setProperty("--card-alpha", String(s.opacity / 100));
   els.body.style.setProperty("--font-body", fontValue(s.font));
-  els.opacity.value = String(s.opacity);
-  els.opacityVal.textContent = `${s.opacity}%`;
-  els.autostart.checked = Boolean(s.autostart);
+  if (els.opacity) els.opacity.value = String(s.opacity);
+  if (els.opacityVal) els.opacityVal.textContent = `${s.opacity}%`;
+  if (els.autostart) els.autostart.checked = Boolean(s.autostart);
   if (els.weatherAnim) els.weatherAnim.checked = s.weatherAnim !== false;
-  els.placeNow.textContent = s.weather?.name || "尚未选择位置";
+  if (els.typhoonAlert) els.typhoonAlert.checked = s.typhoonAlert !== false;
+  if (els.placeNow) els.placeNow.textContent = s.weather?.name || "尚未选择位置";
   syncDragLock();
   refreshCtxLabels();
 }
@@ -328,19 +331,35 @@ function zoomChart(event) {
   paintChartPan();
 }
 
-function openChart(chart, page) {
+function showChartSheet(chart, page) {
   if (!els.chartSheet || !els.chartZoom || !chart) return;
   resetChartPan();
+  els.chartZoom.hidden = false;
   els.chartZoom.src = chart;
+  if (els.chartEmpty) els.chartEmpty.hidden = true;
   els.chartSheet.dataset.page = page || "https://typhoon.nmc.cn/web.html";
   els.chartSheet.hidden = false;
+}
+
+async function openChart(chart, page) {
+  if (!chart) return;
+  const nextPage = page || "https://typhoon.nmc.cn/web.html";
+  try {
+    await invoke("open_chart_window", { page: nextPage });
+  } catch {
+    showChartSheet(chart, nextPage);
+  }
 }
 
 function closeChart() {
   if (!els.chartSheet) return;
   els.chartSheet.hidden = true;
   resetChartPan();
-  if (els.chartZoom) els.chartZoom.removeAttribute("src");
+  if (els.chartZoom) {
+    els.chartZoom.hidden = true;
+    els.chartZoom.removeAttribute("src");
+  }
+  if (els.chartEmpty) els.chartEmpty.hidden = false;
 }
 
 function hideUpdateSheet() {
@@ -602,7 +621,9 @@ async function refreshWeather() {
   els.weatherAlert.hidden = true;
   els.typhoon.hidden = true;
   state.weatherOutlook = [];
-  const stormsP = s.weatherPos === "off" ? Promise.resolve(emptyTyphoon()) : fetchTyphoons().catch(() => emptyTyphoon());
+  const stormsP = s.weatherPos === "off" || s.typhoonAlert === false
+    ? Promise.resolve(emptyTyphoon())
+    : fetchTyphoons().catch(() => emptyTyphoon());
   if (s.weatherPos === "off") {
     applyWeatherFx("");
     renderTyphoons(emptyTyphoon());
@@ -651,6 +672,7 @@ function watchCalendarDay() {
     state.selected = today;
   }
   renderMonth();
+  applyAppearance();
   refreshWeather();
 }
 
@@ -752,7 +774,7 @@ function bindSettingsForm() {
     if (key === "size") await applyWindowSize();
     if (key === "layer") await applyWindowLayer();
     if (key === "autostart") await applyAutostart();
-    if (key === "size" || key === "weatherPos" || key === "weatherAnim") await refreshWeather();
+    if (key === "size" || key === "weatherPos" || key === "weatherAnim" || key === "typhoonAlert") await refreshWeather();
   };
 
   els.size.addEventListener("change", () => onChange("size", els.size.value));
@@ -761,6 +783,7 @@ function bindSettingsForm() {
   els.layer.addEventListener("change", () => onChange("layer", els.layer.value));
   els.weatherPos.addEventListener("change", () => onChange("weatherPos", els.weatherPos.value));
   els.weatherAnim?.addEventListener("change", () => onChange("weatherAnim", els.weatherAnim.checked));
+  els.typhoonAlert?.addEventListener("change", () => onChange("typhoonAlert", els.typhoonAlert.checked));
   els.opacity.addEventListener("input", () => {
     state.settings.opacity = Number(els.opacity.value);
     persist();

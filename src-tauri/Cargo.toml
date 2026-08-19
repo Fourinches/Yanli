@@ -1,6 +1,6 @@
 [package]
 name = "yanli"
-version = "1.2.20"
+version = "1.2.21"
 description = "轻量桌面中国日历"
 authors = ["you"]
 edition = "2021"
@@ -13,7 +13,7 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = ["tray-icon", "macos-private-api"] }
+tauri = { version = "2", features = ["tray-icon", "macos-private-api", "protocol-asset"] }
 tauri-plugin-autostart = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

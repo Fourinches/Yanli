@@ -94,6 +94,10 @@
           <input id="set-weather-anim" type="checkbox" />
           天气动画
         </label>
+        <label class="check">
+          <input id="set-typhoon-alert" type="checkbox" />
+          台风预警
+        </label>
         <label>透明度 <span id="opacity-val">86%</span>
           <input id="set-opacity" type="range" min="55" max="100" />
         </label>
@@ -135,7 +139,8 @@
           </button>
         </header>
         <div class="chart-view" id="chart-view">
-          <img id="chart-zoom" alt="中央气象台台风路径图" />
+          <p class="chart-empty" id="chart-empty">正在载入路径图…</p>
+          <img id="chart-zoom" alt="中央气象台台风路径图" hidden />
         </div>
         <button class="text-btn" id="chart-site" type="button">打开中央气象台</button>
       </div>

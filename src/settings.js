@@ -41,6 +41,7 @@ export const DEFAULTS = {
   autostart: true,
   weatherPos: "top",
   weatherAnim: true,
+  typhoonAlert: true,
   weather: null,
   x: null,
   y: null,

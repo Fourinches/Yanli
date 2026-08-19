@@ -3,7 +3,7 @@ use std::sync::Mutex;
 use tauri::{
     menu::{Menu, MenuItem, PredefinedMenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
-    Emitter, Manager, WindowEvent,
+    Emitter, Manager, WebviewUrl, WebviewWindowBuilder, WindowEvent,
 };
 use tauri_plugin_autostart::MacosLauncher;
 #[cfg(not(windows))]
@@ -17,6 +17,13 @@ mod desktop;
 mod macos;
 
 static CURRENT_LAYER: Mutex<String> = Mutex::new(String::new());
+
+#[derive(Clone, Default, serde::Serialize, serde::Deserialize)]
+struct ChartPayload {
+    file: String,
+    url: String,
+    page: String,
+}
 
 fn remember_layer(layer: &str) {
     if let Ok(mut current) = CURRENT_LAYER.lock() {
@@ -170,6 +177,100 @@ fn hide_to_tray(app: tauri::AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+fn chart_payload() -> ChartPayload {
+    let file = cma::chart_cache_path();
+    ChartPayload {
+        file: if file.is_file() {
+            file.to_string_lossy().into()
+        } else {
+            String::new()
+        },
+        url: std::fs::read_to_string(std::env::temp_dir().join("yanli-typhoon-chart.url")).unwrap_or_default(),
+        page: std::fs::read_to_string(std::env::temp_dir().join("yanli-typhoon-chart.txt"))
+            .unwrap_or_else(|_| "https://typhoon.nmc.cn/web.html".into()),
+    }
+}
+
+fn remember_page(page: String) {
+    let page = if page.is_empty() {
+        "https://typhoon.nmc.cn/web.html".to_string()
+    } else {
+        page
+    };
+    let _ = std::fs::write(std::env::temp_dir().join("yanli-typhoon-chart.txt"), page);
+}
+
+#[tauri::command]
+fn get_chart_payload() -> ChartPayload {
+    chart_payload()
+}
+
+fn destroy_chart_window(app: &tauri::AppHandle) {
+    if let Some(win) = app.get_webview_window("chart") {
+        let _ = win.destroy();
+    }
+}
+
+fn focus_chart_window(app: &tauri::AppHandle) -> bool {
+    let Some(win) = app.get_webview_window("chart") else {
+        return false;
+    };
+    let _ = win.emit("yanli://chart", ());
+    let _ = win.show();
+    let _ = win.unminimize();
+    let _ = win.set_focus();
+    true
+}
+
+fn create_chart_window(app: &tauri::AppHandle) -> Result<(), String> {
+    if focus_chart_window(app) {
+        return Ok(());
+    }
+    let win = WebviewWindowBuilder::new(app, "chart", WebviewUrl::App("chart.html".into()))
+        .title("台风路径图")
+        .inner_size(900.0, 760.0)
+        .min_inner_size(520.0, 460.0)
+        .resizable(true)
+        .decorations(true)
+        .closable(true)
+        .skip_taskbar(false)
+        .center()
+        .background_color(tauri::window::Color(28, 36, 51, 255))
+        .build()
+        .map_err(|e| e.to_string())?;
+    let handle = app.clone();
+    win.on_window_event(move |event| {
+        if let WindowEvent::CloseRequested { api, .. } = event {
+            api.prevent_close();
+            destroy_chart_window(&handle);
+        }
+    });
+    Ok(())
+}
+
+#[tauri::command]
+fn close_chart_window(app: tauri::AppHandle) -> Result<(), String> {
+    destroy_chart_window(&app);
+    Ok(())
+}
+
+#[tauri::command]
+fn open_chart_window(app: tauri::AppHandle, page: String) -> Result<(), String> {
+    remember_page(page);
+    if focus_chart_window(&app) {
+        return Ok(());
+    }
+    let handle = app.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_millis(50));
+        let app = handle.clone();
+        let _ = handle.run_on_main_thread(move || {
+            let _ = create_chart_window(&app);
+        });
+    });
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -182,6 +283,9 @@ pub fn run() {
             move_window,
             resize_window,
             hide_to_tray,
+            open_chart_window,
+            get_chart_payload,
+            close_chart_window,
             quit_app,
             set_autostart,
             is_autostart_on,
@@ -196,11 +300,12 @@ pub fn run() {
             let today = MenuItem::with_id(app, "today", "回到今天", true, None::<&str>)?;
             let desktop = MenuItem::with_id(app, "desktop", "贴在壁纸上", true, None::<&str>)?;
             let hide = MenuItem::with_id(app, "hide", "隐藏到托盘", true, None::<&str>)?;
+            let close_chart = MenuItem::with_id(app, "close_chart", "关闭路径图", true, None::<&str>)?;
             let quit = MenuItem::with_id(app, "quit", "退出砚历", true, None::<&str>)?;
             let sep = PredefinedMenuItem::separator(app)?;
             let menu = Menu::with_items(
                 app,
-                &[&show, &today, &settings, &sep, &desktop, &hide, &sep, &quit],
+                &[&show, &today, &settings, &sep, &desktop, &hide, &close_chart, &sep, &quit],
             )?;
 
             let mut tray = TrayIconBuilder::new()
@@ -227,6 +332,7 @@ pub fn run() {
                     "hide" => {
                         let _ = hide_to_tray(app.clone());
                     }
+                    "close_chart" => destroy_chart_window(app),
                     "quit" => app.exit(0),
                     _ => {}
                 })
