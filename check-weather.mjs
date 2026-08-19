@@ -1,4 +1,4 @@
-import { formatHierarchy, mergeAlerts, officialChart, parentStation, parseCmaWeather, parseTyphoons, searchPlaces, upcomingSevere, weatherFxText, weatherMood } from "./src/weather.js";
+import { daySummary, formatHierarchy, mergeAlerts, officialChart, parentStation, parseCmaWeather, parseTyphoons, searchPlaces, upcomingSevere, weatherFxText, weatherMood } from "./src/weather.js";
 
 const shanghai = await searchPlaces("上海");
 if (shanghai.length !== 1 || shanghai[0].short !== "上海" || shanghai[0].station !== "58367" || shanghai[0].name !== "上海-中国") {
@@ -29,9 +29,22 @@ const beijing = parseCmaWeather({
     },
   },
 });
-if (beijing.temp !== 29 || beijing.text !== "晴" || beijing.alerts.length) {
+if (beijing.temp !== 29 || beijing.text !== "晴" || beijing.summary !== "晴" || beijing.alerts.length) {
   console.error(beijing);
   throw new Error("北京实况解析错误");
+}
+
+const today = parseCmaWeather({
+  now: { data: { now: { temperature: 31 }, alarm: [] } },
+  weather: {
+    data: {
+      daily: [{ date: "2026/08/17", high: 31, low: 23, dayText: "晴", nightText: "多云" }],
+    },
+  },
+});
+if (today.summary !== "23–31° 晴转多云" || daySummary({ high: 30, low: 23, dayText: "雷阵雨", nightText: "雷阵雨" }) !== "23–30° 雷阵雨") {
+  console.error(today);
+  throw new Error("一日气温总汇解析错误");
 }
 
 const warned = parseCmaWeather({

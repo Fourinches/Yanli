@@ -501,7 +501,8 @@ function applyWeatherFx(text) {
 
 function renderWeather(target, data, name) {
   target.hidden = false;
-  target.textContent = `${name} ${data.temp}° ${data.text}`;
+  const live = `${name} ${data.temp}° ${data.text}`;
+  target.textContent = data.summary ? `${live} · ${data.summary}` : live;
   applyWeatherFx(weatherFxText(data));
 }
 

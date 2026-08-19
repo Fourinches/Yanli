@@ -92,6 +92,22 @@ fn run_key() -> Result<winreg::RegKey, String> {
         .map_err(|e| e.to_string())
 }
 
+#[cfg(windows)]
+fn is_dev_exe(path: &std::path::Path) -> bool {
+    let text = path.to_string_lossy().replace('/', r"\");
+    let lower = text.to_ascii_lowercase();
+    lower.contains(r"\debug\yanli.exe")
+        || lower.contains("cargo-target")
+        || cfg!(debug_assertions)
+}
+
+#[cfg(windows)]
+fn installed_exe() -> Option<std::path::PathBuf> {
+    let local = std::env::var_os("LOCALAPPDATA")?;
+    let path = std::path::PathBuf::from(local).join("砚历").join("Yanli.exe");
+    path.is_file().then_some(path)
+}
+
 #[tauri::command]
 fn set_autostart(app: tauri::AppHandle, enabled: bool) -> Result<bool, String> {
     #[cfg(windows)]
@@ -100,7 +116,15 @@ fn set_autostart(app: tauri::AppHandle, enabled: bool) -> Result<bool, String> {
         const NAME: &str = "YanliCalendar";
         let key = run_key()?;
         if enabled {
-            let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+            let current = std::env::current_exe().map_err(|e| e.to_string())?;
+            let exe = if is_dev_exe(&current) {
+                match installed_exe() {
+                    Some(path) => path,
+                    None => return Ok(enabled),
+                }
+            } else {
+                current
+            };
             key.set_value(NAME, &format!("\"{}\"", exe.display()))
                 .map_err(|e| e.to_string())?;
         } else {

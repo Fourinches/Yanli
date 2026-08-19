@@ -236,6 +236,24 @@ export function upcomingSevere(daily = []) {
   return groups.map((item) => rangeLabel(item.start, item.end, item.text));
 }
 
+function daySky(today) {
+  const day = clean(today.dayText);
+  const night = clean(today.nightText);
+  if (day && night && day !== night) return `${day}转${night}`;
+  return day || night;
+}
+
+function dayRange(today) {
+  const high = Number(today.high);
+  const low = Number(today.low);
+  if (!Number.isFinite(high) || !Number.isFinite(low)) return "";
+  return `${Math.round(low)}–${Math.round(high)}°`;
+}
+
+export function daySummary(today = {}) {
+  return [dayRange(today), daySky(today)].filter(Boolean).join(" ");
+}
+
 export function parseCmaWeather(bundle) {
   const nowWrap = bundle?.now?.data || {};
   const now = nowWrap.now || {};
@@ -247,6 +265,7 @@ export function parseCmaWeather(bundle) {
     temp: Number.isFinite(temp) ? Math.round(temp) : null,
     text,
     humidity: now.humidity,
+    summary: daySummary(today),
     alerts: officialAlerts(nowWrap.alarm),
     outlook: upcomingSevere(daily),
   };

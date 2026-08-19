@@ -91,6 +91,35 @@ fn typhoon_ids(list: &Value) -> Vec<String> {
         .collect()
 }
 
+fn typhoon_no(row: &Value) -> Option<String> {
+    let no = row.get(3)?;
+    if let Some(n) = no.as_u64() {
+        return Some(n.to_string());
+    }
+    if let Some(n) = no.as_i64() {
+        return Some(n.to_string());
+    }
+    no.as_str()
+        .filter(|s| !s.is_empty() && s.chars().all(|c| c.is_ascii_digit()))
+        .map(str::to_string)
+}
+
+fn active_storm_nos(list: &Value) -> Vec<String> {
+    let Some(rows) = list.get("typhoonList").and_then(Value::as_array) else {
+        return Vec::new();
+    };
+    rows.iter()
+        .filter(|row| {
+            row.as_array()
+                .and_then(|cols| cols.last())
+                .and_then(Value::as_str)
+                .is_some_and(|status| status != "stop")
+        })
+        .filter_map(typhoon_no)
+        .take(3)
+        .collect()
+}
+
 fn valid_station(id: &str) -> bool {
     (3..=8).contains(&id.len()) && id.chars().all(|c| c.is_ascii_alphanumeric())
 }
@@ -149,31 +178,58 @@ pub async fn cma_get(kind: String, q: String) -> Result<Value, String> {
                     views.push(view);
                 }
             }
+            let (chart, page) = typhoon_chart(&list).await.unwrap_or_default();
             Ok(json!({
                 "list": list,
                 "views": views,
-                "chart": typhoon_chart().await.unwrap_or_default(),
-                "page": "https://www.nmc.cn/publish/typhoon/probability-img2.html",
+                "chart": chart,
+                "page": page,
             }))
         }
         _ => Err("未知请求".into()),
     }
 }
 
-fn extract_typhoon_chart(html: &str) -> Option<String> {
+fn extract_typhoon_charts(html: &str) -> Vec<String> {
     let key = "https://image.nmc.cn/product/";
     let mut from = 0;
+    let mut out = Vec::new();
     while let Some(rel) = html[from..].find(key) {
         let start = from + rel;
         let rest = &html[start..];
-        let end = rest.find('"').or_else(|| rest.find('\''))?;
+        let Some(end) = rest.find('"').or_else(|| rest.find('\'')) else {
+            break;
+        };
         let url = rest[..end].replace("&amp;", "&");
-        if url.contains("/TCBU/") {
-            return Some(url);
+        if url.contains("/TCBU/") && !out.iter().any(|item| item == &url) {
+            out.push(url);
         }
         from = start + key.len();
     }
-    None
+    out
+}
+
+fn chart_has_other_storm(url: &str, nos: &[String]) -> bool {
+    let Some(at) = url.find("0W") else {
+        return false;
+    };
+    let tag = url[at..].get(..6).unwrap_or("");
+    if !tag.starts_with("0W") || !tag[2..].chars().all(|c| c.is_ascii_digit()) {
+        return false;
+    }
+    !nos.iter().any(|no| tag.ends_with(no) || tag == format!("0W{no}"))
+}
+
+fn pick_typhoon_chart(urls: &[String], nos: &[String]) -> Option<String> {
+    for no in nos {
+        let tagged = format!("0W{no}");
+        if let Some(url) = urls.iter().find(|item| item.contains(&tagged)) {
+            return Some(url.clone());
+        }
+    }
+    urls.iter()
+        .find(|item| item.contains("/TCBU/") && !chart_has_other_storm(item, nos))
+        .cloned()
 }
 
 fn b64(bytes: &[u8]) -> String {
@@ -205,19 +261,31 @@ fn as_data_url(bytes: &[u8]) -> Option<String> {
     None
 }
 
-async fn typhoon_chart() -> Result<String, String> {
-    let html = get_text(
+async fn typhoon_chart(list: &Value) -> Result<(String, String), String> {
+    let nos = active_storm_nos(list);
+    let pages = [
+        "https://www.nmc.cn/publish/typhoon/warning.html",
         "https://www.nmc.cn/publish/typhoon/probability-img2.html",
-        "https://www.nmc.cn/",
-    )
-    .await?;
-    let url = extract_typhoon_chart(&html).ok_or_else(|| "没有路径图".to_string())?;
+    ];
+    let mut urls = Vec::new();
+    for item in pages {
+        let Ok(html) = get_text(item, "https://www.nmc.cn/").await else {
+            continue;
+        };
+        urls.extend(extract_typhoon_charts(&html));
+    }
+    let url = pick_typhoon_chart(&urls, &nos).ok_or_else(|| "没有路径图".to_string())?;
+    let page = if url.contains("0W") {
+        pages[1].to_string()
+    } else {
+        pages[0].to_string()
+    };
     if let Ok(bytes) = get_bytes(&url, "https://www.nmc.cn/").await {
         if let Some(data) = as_data_url(&bytes) {
-            return Ok(data);
+            return Ok((data, page));
         }
     }
-    Ok(url)
+    Ok((url, page))
 }
 
 async fn locate_path(id: &str) -> String {
@@ -259,11 +327,17 @@ mod tests {
     use super::*;
 
     #[test]
-    fn picks_tcbu_chart() {
-        let html = r#"<img src="https://image.nmc.cn/product/2026/08/14/SAT/x.jpg"><img src="https://image.nmc.cn/product/2026/08/14/TCBU/medium/SEVP.JPG">"#;
+    fn picks_current_storm_chart() {
+        let html = r#"<img src="https://image.nmc.cn/product/2026/08/14/TCBU/medium/SEVP_0W26170000.JPG"><img src="https://image.nmc.cn/product/2026/08/19/TCBU/SEVP_P9.png">"#;
+        let urls = extract_typhoon_charts(html);
         assert_eq!(
-            extract_typhoon_chart(html).as_deref(),
-            Some("https://image.nmc.cn/product/2026/08/14/TCBU/medium/SEVP.JPG")
+            pick_typhoon_chart(&urls, &["2618".into()]).as_deref(),
+            Some("https://image.nmc.cn/product/2026/08/19/TCBU/SEVP_P9.png")
         );
+        assert_eq!(
+            pick_typhoon_chart(&urls, &["2617".into()]).as_deref(),
+            Some("https://image.nmc.cn/product/2026/08/14/TCBU/medium/SEVP_0W26170000.JPG")
+        );
+        assert_eq!(pick_typhoon_chart(&urls[..1], &["2618".into()]), None);
     }
 }
